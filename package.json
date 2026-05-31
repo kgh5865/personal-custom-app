@@ -30,8 +30,13 @@
     "vitest": "^4.1.7"
   },
   "dependencies": {
+    "@capacitor-community/sqlite": "^6.0.2",
     "@capacitor/android": "^6.2.1",
+    "@capacitor/app": "^6.0.3",
+    "@capacitor/browser": "^6.0.6",
     "@capacitor/core": "^6.2.1",
+    "@capacitor/filesystem": "^6.0.4",
+    "@capacitor/preferences": "^6.0.4",
     "svelte-spa-router": "^5.1.0"
   }
 }
