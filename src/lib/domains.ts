@@ -50,6 +50,10 @@ export function createDomains(fs: Fs) {
     const p = paths(name);
     const ts = uniqueTs();
     const dst = `${p.history}/${ts}`;
+    // fs.copy is a thin Capacitor binding that requires the destination dir to exist.
+    // fs.mkdir is idempotent (swallows EEXIST), so this is safe to call unconditionally.
+    await fs.mkdir(p.history);
+    await fs.mkdir(dst);
     for (const file of ['index.html', 'style.css', 'script.js'] as const) {
       const src = `${p.base}/${file}`;
       if (await fs.exists(src)) {
@@ -69,7 +73,7 @@ export function createDomains(fs: Fs) {
   return {
     async create(name: string, displayName: string, icon?: string): Promise<DomainMeta> {
       const p = paths(name);
-      const now = Date.now();
+      const now = uniqueTs();
       const meta: DomainMeta = { name, displayName, icon, createdAt: now, updatedAt: now };
       const def = defaultFiles(displayName);
       await fs.write(p.meta, JSON.stringify(meta, null, 2));
@@ -93,6 +97,9 @@ export function createDomains(fs: Fs) {
 
     async read(name: string): Promise<DomainFiles> {
       const p = paths(name);
+      if (!(await fs.exists(p.meta))) {
+        throw new Error(`domain not found: ${name}`);
+      }
       return {
         html: await fs.read(p.html).catch(() => ''),
         css: await fs.read(p.css).catch(() => ''),
@@ -108,7 +115,7 @@ export function createDomains(fs: Fs) {
       if (files.js != null) await fs.write(p.js, files.js);
       if (await fs.exists(p.meta)) {
         const meta: DomainMeta = JSON.parse(await fs.read(p.meta));
-        meta.updatedAt = Date.now();
+        meta.updatedAt = uniqueTs();
         await fs.write(p.meta, JSON.stringify(meta, null, 2));
       }
     },

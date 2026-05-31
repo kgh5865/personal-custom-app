@@ -36,6 +36,9 @@ function memFsBackend(): FsBackend {
       const v = files.get(s);
       if (v == null) throw new Error('ENOENT');
       files.set(d, v);
+      // register parent dir so exists() reflects what real fs would
+      const parent = d.substring(0, d.lastIndexOf('/'));
+      if (parent) dirs.add(parent);
     },
     async remove(p) {
       files.delete(p);
@@ -97,7 +100,6 @@ describe('domains', () => {
   it('update replaces files and updates meta.updatedAt', async () => {
     await domains.create('memo', '메모');
     const metaBefore = JSON.parse(await fs.read('/domains/memo/meta.json'));
-    await new Promise(r => setTimeout(r, 5));
     await domains.update('memo', { html: '<p>updated</p>' });
     const files = await domains.read('memo');
     expect(files.html).toBe('<p>updated</p>');
@@ -108,7 +110,6 @@ describe('domains', () => {
   it('update backs up previous version before writing', async () => {
     await domains.create('memo', '메모');
     await domains.update('memo', { html: '<p>v2</p>' });
-    await new Promise(r => setTimeout(r, 5));
     await domains.update('memo', { html: '<p>v3</p>' });
     const hist = await domains.history('memo');
     expect(hist.length).toBeGreaterThanOrEqual(2);
@@ -147,10 +148,33 @@ describe('domains', () => {
   it('history returns timestamps in descending order (newest first)', async () => {
     await domains.create('memo', '메모');
     await domains.update('memo', { html: 'a' });
-    await new Promise(r => setTimeout(r, 5));
     await domains.update('memo', { html: 'b' });
     const h = await domains.history('memo');
     expect(h.length).toBeGreaterThanOrEqual(2);
     expect(h[0]).toBeGreaterThan(h[1]);
+  });
+
+  it('backup snapshot contains the pre-update content (not the post-update content)', async () => {
+    await domains.create('memo', '메모');
+    const original = (await domains.read('memo')).html;
+    await domains.update('memo', { html: '<p>v2</p>' });
+    // Read the most recent backup file directly from fs
+    const hist = await domains.history('memo');
+    const ts = hist[0];
+    const backed = await fs.read(`/domains/memo/history/${ts}/index.html`);
+    expect(backed).toBe(original);
+  });
+
+  it('HISTORY_LIMIT caps history at 20 entries', async () => {
+    await domains.create('memo', '메모');
+    for (let i = 0; i < 25; i++) {
+      await domains.update('memo', { html: `<p>v${i}</p>` });
+    }
+    const hist = await domains.history('memo');
+    expect(hist.length).toBeLessThanOrEqual(20);
+  });
+
+  it('read throws when domain does not exist', async () => {
+    await expect(domains.read('nope')).rejects.toThrow(/domain not found/);
   });
 });

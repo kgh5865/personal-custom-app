@@ -38,6 +38,9 @@ function makeBackend(): FsBackend & {
     const v = files.get(s);
     if (v == null) throw new Error('ENOENT');
     files.set(d, v);
+    // register parent dir so exists() reflects what real fs would
+    const parent = d.substring(0, d.lastIndexOf('/'));
+    if (parent) dirs.add(parent);
   });
   const remove = vi.fn(async (p: string) => {
     files.delete(p);
