@@ -15,7 +15,7 @@ export interface InvokeResult {
 }
 
 export function createRegistry(deps: RegistryDeps) {
-  const handlers: Record<string, (args: any) => Promise<any>> = {
+  const handlers: Record<ToolName, (args: any) => Promise<any>> = {
     create_domain: ({ name, displayName, icon }) => deps.domains.create(name, displayName, icon),
     list_domains: () => deps.domains.list(),
     read_screen: ({ domain }) => deps.domains.read(domain),
@@ -31,7 +31,7 @@ export function createRegistry(deps: RegistryDeps) {
 
   return {
     async invoke(name: ToolName | string, args: any): Promise<InvokeResult> {
-      const fn = handlers[name];
+      const fn = (handlers as Record<string, (args: any) => Promise<any>>)[name];
       if (!fn) return { ok: false, error: `unknown tool: ${name}` };
       try {
         const result = await fn(args ?? {});

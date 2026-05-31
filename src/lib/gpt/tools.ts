@@ -33,7 +33,7 @@ export const TOOL_SCHEMAS = [
   {
     type: 'function',
     name: 'update_screen',
-    description: 'Replace HTML/CSS/JS of a domain. Previous version is backed up automatically.',
+    description: 'Partially update HTML/CSS/JS of a domain — only the provided fields (html/css/js) are written, others are left unchanged. Previous version is backed up automatically.',
     parameters: {
       type: 'object',
       properties: {
