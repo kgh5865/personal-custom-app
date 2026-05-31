@@ -9,9 +9,12 @@
     "preview": "vite preview",
     "check": "svelte-check --tsconfig ./tsconfig.json",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "build:android": "npm run build && npx cap sync android && cd android && .\\gradlew assembleDebug",
+    "install:android": "adb install -r android/app/build/outputs/apk/debug/app-debug.apk"
   },
   "devDependencies": {
+    "@capacitor/cli": "^6.2.1",
     "@sveltejs/vite-plugin-svelte": "^4.0.0",
     "@tsconfig/svelte": "^5.0.4",
     "@vitest/ui": "^4.1.7",
@@ -27,6 +30,8 @@
     "vitest": "^4.1.7"
   },
   "dependencies": {
+    "@capacitor/android": "^6.2.1",
+    "@capacitor/core": "^6.2.1",
     "svelte-spa-router": "^5.1.0"
   }
 }
