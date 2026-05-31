@@ -51,7 +51,7 @@ async function initProd(): Promise<Fs> {
       },
       async readdir(path) {
         const r = await Filesystem.readdir({ path, directory: Directory.Data });
-        return r.files.map((f: any) => f.name ?? f);
+        return r.files.map((f) => f.name);
       },
       async exists(path) {
         try { await Filesystem.stat({ path, directory: Directory.Data }); return true; }
