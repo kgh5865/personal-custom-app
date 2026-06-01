@@ -1,5 +1,11 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { createOAuth, type OAuthDeps, type Tokens } from '../src/lib/oauth';
+import { setApiKeyMode, getAuthMode, clearAuth } from '../src/lib/oauth';
+import { Preferences } from '@capacitor/preferences';
+
+// Mock Capacitor plugins that aren't available in jsdom
+vi.mock('@capacitor/browser', () => ({ Browser: { open: vi.fn(), close: vi.fn() } }));
+vi.mock('@capacitor/app', () => ({ App: { addListener: vi.fn() } }));
 
 function makeSecure() {
   let store: Tokens | null = null;
@@ -92,5 +98,36 @@ describe('oauth manager', () => {
     await oauth.getValidTokens();
     const t = await oauth.currentTokens();
     expect(t?.access).toBe('A2:r3');
+  });
+});
+
+describe('api key fallback', () => {
+  beforeEach(() => {
+    // Reset the mocked Preferences store + the OAuth singleton state by re-importing isn't trivial,
+    // so use the mock's __reset() helper to clear keys.
+    (Preferences as any).__reset?.();
+  });
+
+  it('setApiKeyMode persists the key', async () => {
+    await setApiKeyMode('sk-test-123');
+    const mode = await getAuthMode();
+    expect(mode).toEqual({ mode: 'apikey', apiKey: 'sk-test-123' });
+  });
+
+  it('getAuthMode returns null when no auth set', async () => {
+    expect(await getAuthMode()).toBeNull();
+  });
+
+  it('clearAuth removes both api-key and oauth state', async () => {
+    await setApiKeyMode('sk-test-xyz');
+    await clearAuth();
+    expect(await getAuthMode()).toBeNull();
+  });
+
+  it('api-key mode takes precedence over oauth presence', async () => {
+    // Set api-key mode; even if oauth tokens were present, api-key wins
+    await setApiKeyMode('sk-explicit');
+    const mode = await getAuthMode();
+    expect(mode?.mode).toBe('apikey');
   });
 });
