@@ -50,9 +50,13 @@
     }
   }
 
+  // Re-load whenever params.name changes (router reuses the component instance
+  // when navigating between /domain/foo and /domain/bar). This also fires on
+  // initial mount, so onMount doesn't need to call load() separately.
+  $: if (params?.name) load();
+
   onMount(async () => {
     await loadProfile();
-    await load();
     // Set up message host for iframe → host RPC calls
     const host = createMessageHost({
       get_user_profile: async () => $profile,
@@ -83,7 +87,7 @@
     {srcdoc}
     class="w-full"
     style="height: calc(100vh - 100px); border: 0;"
-    sandbox="allow-scripts allow-same-origin"
+    sandbox="allow-scripts"
     title={params.name}
   ></iframe>
 {:else}

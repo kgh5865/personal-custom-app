@@ -1,13 +1,13 @@
 import type { DomainFiles } from './domains';
 
-/** Escape </style> sequences so they don't prematurely close an inlined style block. */
+/** Escape </style> sequences so they don't prematurely close an inlined style block. Preserves original tag casing. */
 export function escapeForStyle(css: string): string {
-  return css.replace(/<\/style>/gi, '<\\/style>');
+  return css.replace(/<\/style>/gi, (m) => '<\\/' + m.slice(2));
 }
 
-/** Escape </script> sequences so they don't prematurely close an inlined script block. */
+/** Escape </script> sequences so they don't prematurely close an inlined script block. Preserves original tag casing. */
 export function escapeForScript(js: string): string {
-  return js.replace(/<\/script>/gi, '<\\/script>');
+  return js.replace(/<\/script>/gi, (m) => '<\\/' + m.slice(2));
 }
 
 const STYLE_TAG_OPEN = '<' + 'style>';
