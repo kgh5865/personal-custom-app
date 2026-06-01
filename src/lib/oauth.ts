@@ -61,8 +61,15 @@ export function getOAuth(): Promise<OAuth> {
 }
 
 function buildProdAuthUrl(): string {
+  const clientId = import.meta.env.VITE_CHATGPT_CLIENT_ID;
+  if (!clientId) {
+    throw new Error(
+      'ChatGPT OAuth client_id가 설정되지 않았습니다. ' +
+      '.env에 VITE_CHATGPT_CLIENT_ID를 설정하거나, 설정 화면에서 API Key 모드를 사용하세요.'
+    );
+  }
   const params = new URLSearchParams({
-    client_id: import.meta.env.VITE_CHATGPT_CLIENT_ID ?? '',
+    client_id: clientId,
     response_type: 'code',
     redirect_uri: import.meta.env.VITE_CHATGPT_REDIRECT_URI ?? 'personal-life-app://oauth/callback',
     scope: 'openai',

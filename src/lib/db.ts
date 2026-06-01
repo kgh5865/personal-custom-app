@@ -31,8 +31,13 @@ async function initProd(): Promise<Db> {
   try {
     const { SQLiteConnection, CapacitorSQLite } = await import('@capacitor-community/sqlite');
     const conn = new SQLiteConnection(CapacitorSQLite);
-    const db = await conn.createConnection('app', false, 'no-encryption', 1, false);
-    await db.open();
+    const isConnRes = await conn.isConnection('app', false);
+    const isConn = isConnRes.result === true;
+    const db = isConn
+      ? await conn.retrieveConnection('app', false)
+      : await conn.createConnection('app', false, 'no-encryption', 1, false);
+    const isOpenRes = await db.isDBOpen();
+    if (!isOpenRes.result) await db.open();
     const backend: DbBackend = {
       // Route DDL (no params) through native execute(); DML (with params)
       // through native run() which handles parameter binding and transactions.
