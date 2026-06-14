@@ -79,31 +79,56 @@
   }
 </script>
 
-<div class="flex flex-col" style="height: calc(100vh - 56px);">
-  <div class="flex-1 overflow-y-auto p-3 space-y-2">
+<div class="flex flex-col" style="height: calc(100vh - 80px);">
+  <header class="px-4 pt-3 pb-2">
+    <h1 class="text-2xl font-medium text-on-surface">챗</h1>
+  </header>
+
+  <div class="flex-1 overflow-y-auto px-3 pb-2 space-y-3">
     {#each $messages as m}
-      <div class={m.role === 'user' ? 'text-right' : 'text-left'}>
-        <span
-          class="inline-block max-w-xs px-3 py-2 rounded whitespace-pre-wrap break-words
-                 {m.role === 'user' ? 'bg-blue-500 text-white' : 'bg-gray-100'}"
+      <div class={m.role === 'user' ? 'flex justify-end' : 'flex justify-start'}>
+        <div
+          class="max-w-[80%] px-4 py-2.5 whitespace-pre-wrap break-words shadow-md-1
+                 {m.role === 'user'
+                    ? 'bg-primary text-on-primary rounded-md-xl rounded-br-md-sm'
+                    : 'bg-surface-container text-on-surface rounded-md-xl rounded-bl-md-sm'}"
         >
           {m.content}
-        </span>
+        </div>
       </div>
     {/each}
-    {#if busy}<div class="text-gray-400 text-sm">...생각 중</div>{/if}
-    {#if error}<div class="text-red-500 text-sm">{error}</div>{/if}
+    {#if busy}
+      <div class="flex justify-start">
+        <div class="bg-surface-container px-4 py-2.5 rounded-md-xl flex items-center gap-2">
+          <span class="msym text-on-surface-variant animate-spin" style="font-size: 18px;">progress_activity</span>
+          <span class="text-sm text-on-surface-variant">생각 중...</span>
+        </div>
+      </div>
+    {/if}
+    {#if error}
+      <div class="text-md-error text-sm px-2">{error}</div>
+    {/if}
   </div>
-  <div class="border-t p-2 flex gap-2 bg-white">
-    <input
-      bind:value={input}
-      on:keydown={onKey}
-      disabled={busy}
-      class="flex-1 border rounded px-2 py-1"
-      placeholder="GPT에게 말하기"
-    />
-    <button on:click={send} disabled={busy} class="bg-blue-600 text-white px-3 rounded disabled:opacity-50">
-      전송
-    </button>
+
+  <div class="border-t border-outline-variant px-3 py-3 bg-surface">
+    <div class="flex items-end gap-2">
+      <div class="flex-1 bg-surface-container-high rounded-md-xl px-4 py-2.5">
+        <input
+          bind:value={input}
+          on:keydown={onKey}
+          disabled={busy}
+          class="w-full bg-transparent outline-none text-on-surface placeholder:text-on-surface-variant"
+          placeholder="GPT에게 말하기"
+        />
+      </div>
+      <button
+        on:click={send}
+        disabled={busy || !input.trim()}
+        class="md-ripple bg-primary text-on-primary rounded-full w-12 h-12 flex items-center justify-center shadow-md-1 disabled:opacity-40"
+        aria-label="전송"
+      >
+        <span class="msym">send</span>
+      </button>
+    </div>
   </div>
 </div>

@@ -73,23 +73,29 @@
   });
 </script>
 
-<div class="flex items-center gap-2 p-2 border-b bg-gray-50">
-  <button on:click={() => history.back()} class="text-blue-600">← 뒤로</button>
-  <div class="flex-1 font-semibold truncate">{params.name}</div>
-  <button on:click={revert} class="text-sm text-gray-600 underline">되돌리기</button>
-  <button on:click={remove} class="text-sm text-red-600 underline">삭제</button>
-</div>
+<header class="flex items-center gap-1 px-2 py-2 bg-surface border-b border-outline-variant">
+  <button on:click={() => history.back()} class="md-ripple w-12 h-12 flex items-center justify-center rounded-full" aria-label="뒤로">
+    <span class="msym text-on-surface">arrow_back</span>
+  </button>
+  <div class="flex-1 font-medium text-on-surface truncate">{params.name}</div>
+  <button on:click={revert} class="md-ripple w-12 h-12 flex items-center justify-center rounded-full" aria-label="되돌리기">
+    <span class="msym text-on-surface">undo</span>
+  </button>
+  <button on:click={remove} class="md-ripple w-12 h-12 flex items-center justify-center rounded-full text-md-error" aria-label="삭제">
+    <span class="msym">delete</span>
+  </button>
+</header>
 
 {#if error}
-  <div class="p-4 text-red-500">{error}</div>
+  <div class="p-4 text-md-error">{error}</div>
 {:else if srcdoc}
   <iframe
     {srcdoc}
     class="w-full"
-    style="height: calc(100vh - 100px); border: 0;"
+    style="height: calc(100vh - 56px); border: 0;"
     sandbox="allow-scripts"
     title={params.name}
   ></iframe>
 {:else}
-  <div class="p-4 text-gray-500">로딩 중...</div>
+  <div class="p-4 text-on-surface-variant">로딩 중...</div>
 {/if}
