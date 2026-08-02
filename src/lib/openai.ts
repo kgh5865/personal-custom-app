@@ -29,6 +29,10 @@ export interface ResponsesResult {
 const DEFAULT_MODEL = 'gpt-4o';
 const DEFAULT_ENDPOINT = 'https://api.openai.com/v1/chat/completions';
 
+function normalizeBaseURL(url: string): string {
+  return url.replace(/\/+$/, '');
+}
+
 export function createOpenAIClient(deps: OpenAIDeps) {
   return {
     async respond(req: ResponsesInput): Promise<ResponsesResult> {
@@ -85,6 +89,7 @@ export async function getOpenAIClient(): Promise<OpenAIClient> {
       const mode = await getAuthMode();
       if (!mode) throw new Error('not authenticated');
       if (mode.mode === 'apikey') return `Bearer ${mode.apiKey}`;
+      if (mode.mode === 'gateway') return `Bearer ${mode.token}`;
       const t = await (await getOAuth()).getValidTokens();
       return `Bearer ${t.access}`;
     },
@@ -94,6 +99,18 @@ export async function getOpenAIClient(): Promise<OpenAIClient> {
       const t = await (await getOAuth()).getValidTokens();
       // ChatGPT 구독 토큰으로 호출할 때 OpenAI 백엔드가 요구하는 계정 식별자
       return t.accountId ? { 'chatgpt-account-id': t.accountId } : {};
+    },
+    getEndpoint: async () => {
+      const mode = await getAuthMode();
+      if (mode && mode.mode === 'gateway') {
+        return `${normalizeBaseURL(mode.baseURL)}/v1/chat/completions`;
+      }
+      return DEFAULT_ENDPOINT;
+    },
+    getModel: async () => {
+      const mode = await getAuthMode();
+      if (mode && mode.mode === 'gateway' && mode.model) return mode.model;
+      return DEFAULT_MODEL;
     },
   });
 }

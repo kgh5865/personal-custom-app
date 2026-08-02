@@ -135,17 +135,35 @@ const MODE_KEY = 'auth_mode';
 
 export type AuthMode =
   | { mode: 'oauth' }
-  | { mode: 'apikey'; apiKey: string };
+  | { mode: 'apikey'; apiKey: string }
+  | { mode: 'gateway'; baseURL: string; token: string; model: string };
 
 export async function setApiKeyMode(apiKey: string): Promise<void> {
   const secure = await getSecureStore();
   await secure.setObject(MODE_KEY, { mode: 'apikey', apiKey });
 }
 
+export async function setGatewayMode(baseURL: string, token: string, model: string): Promise<void> {
+  const secure = await getSecureStore();
+  await secure.setObject(MODE_KEY, { mode: 'gateway', baseURL, token, model });
+}
+
+function getEnvGatewayMode(): AuthMode | null {
+  const baseURL = import.meta.env.VITE_OPENCLAW_URL;
+  const token = import.meta.env.VITE_OPENCLAW_TOKEN;
+  const model = import.meta.env.VITE_OPENCLAW_MODEL ?? 'openclaw/default';
+  if (!baseURL || !token) return null;
+  return { mode: 'gateway', baseURL, token, model };
+}
+
 export async function getAuthMode(): Promise<AuthMode | null> {
   const secure = await getSecureStore();
   const explicit = await secure.getObject<AuthMode>(MODE_KEY);
   if (explicit && explicit.mode === 'apikey' && explicit.apiKey) return explicit;
+  if (explicit && explicit.mode === 'gateway' && explicit.baseURL && explicit.token) return explicit;
+  // 사용자 저장값이 없으면 빌드타임 .env 게이트웨이 폴백을 사용
+  const envGw = getEnvGatewayMode();
+  if (envGw) return envGw;
   const oauth = await getOAuth();
   const t = await oauth.currentTokens();
   if (t) return { mode: 'oauth' };

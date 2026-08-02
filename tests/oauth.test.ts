@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { createOAuth, generatePkce, type OAuthDeps, type Tokens } from '../src/lib/oauth';
-import { setApiKeyMode, getAuthMode, clearAuth } from '../src/lib/oauth';
+import { setApiKeyMode, setGatewayMode, getAuthMode, clearAuth } from '../src/lib/oauth';
 import { Preferences } from '@capacitor/preferences';
 
 vi.mock('@capacitor/browser', () => ({ Browser: { open: vi.fn(), close: vi.fn() } }));
@@ -166,5 +166,19 @@ describe('api key fallback', () => {
     await setApiKeyMode('sk-explicit');
     const mode = await getAuthMode();
     expect(mode?.mode).toBe('apikey');
+  });
+
+  it('setGatewayMode persists baseURL/token/model', async () => {
+    await setGatewayMode('http://gw.local:18789', 'gw-token', 'openclaw/default');
+    const mode = await getAuthMode();
+    expect(mode).toEqual({
+      mode: 'gateway', baseURL: 'http://gw.local:18789', token: 'gw-token', model: 'openclaw/default',
+    });
+  });
+
+  it('clearAuth also clears gateway mode', async () => {
+    await setGatewayMode('http://gw.local:18789', 'gw-token', 'openclaw/default');
+    await clearAuth();
+    expect(await getAuthMode()).toBeNull();
   });
 });
