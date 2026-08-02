@@ -3,6 +3,9 @@ import { getAuthMode, getOAuth } from './oauth';
 export interface OpenAIDeps {
   fetch: typeof fetch;
   getAuthHeader: () => Promise<string>;
+  getExtraHeaders?: () => Promise<Record<string, string>>;
+  getEndpoint?: () => Promise<string>;
+  getModel?: () => Promise<string>;
 }
 
 export interface ResponsesInput {
@@ -24,22 +27,26 @@ export interface ResponsesResult {
 }
 
 const DEFAULT_MODEL = 'gpt-4o';
-const ENDPOINT = 'https://api.openai.com/v1/responses';
+const DEFAULT_ENDPOINT = 'https://api.openai.com/v1/chat/completions';
 
 export function createOpenAIClient(deps: OpenAIDeps) {
   return {
     async respond(req: ResponsesInput): Promise<ResponsesResult> {
       const authHeader = await deps.getAuthHeader();
+      const endpoint = deps.getEndpoint ? await deps.getEndpoint() : DEFAULT_ENDPOINT;
+      const model = req.model ?? (deps.getModel ? await deps.getModel() : DEFAULT_MODEL);
+      const extra = deps.getExtraHeaders ? await deps.getExtraHeaders() : {};
       const body = {
-        model: req.model ?? DEFAULT_MODEL,
-        input: req.input,
+        model,
+        messages: req.input,
         tools: req.tools,
       };
-      const r = await deps.fetch(ENDPOINT, {
+      const r = await deps.fetch(endpoint, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           Authorization: authHeader,
+          ...extra,
         },
         body: JSON.stringify(body),
       });
@@ -48,15 +55,22 @@ export function createOpenAIClient(deps: OpenAIDeps) {
         throw new Error(`openai ${r.status}: ${text}`);
       }
       const data = await r.json();
-      const text = (data.output ?? [])
-        .filter((o: any) => o.type === 'message')
-        .flatMap((o: any) => (o.content ?? [])
-          .filter((c: any) => c.type === 'output_text')
-          .map((c: any) => c.text))
-        .join('');
-      const toolCalls: ToolCall[] = (data.output ?? [])
-        .filter((o: any) => o.type === 'function_call')
-        .map((o: any) => ({ id: o.call_id, name: o.name, args: JSON.parse(o.arguments) }));
+      const choice = data.choices?.[0];
+      const message = choice?.message ?? {};
+      const text = typeof message.content === 'string' ? message.content : '';
+      const rawToolCalls = Array.isArray(message.tool_calls) ? message.tool_calls : [];
+      const toolCalls: ToolCall[] = rawToolCalls
+        .filter((tc: any) => tc && tc.function)
+        .map((tc: any) => {
+          let args: any = {};
+          const raw = tc.function.arguments;
+          if (typeof raw === 'string' && raw.length > 0) {
+            try { args = JSON.parse(raw); } catch { args = {}; }
+          } else if (raw && typeof raw === 'object') {
+            args = raw;
+          }
+          return { id: tc.id, name: tc.function.name, args };
+        });
       return { text, toolCalls, raw: data };
     },
   };
@@ -73,6 +87,13 @@ export async function getOpenAIClient(): Promise<OpenAIClient> {
       if (mode.mode === 'apikey') return `Bearer ${mode.apiKey}`;
       const t = await (await getOAuth()).getValidTokens();
       return `Bearer ${t.access}`;
+    },
+    getExtraHeaders: async () => {
+      const mode = await getAuthMode();
+      if (mode?.mode !== 'oauth') return {};
+      const t = await (await getOAuth()).getValidTokens();
+      // ChatGPT 구독 토큰으로 호출할 때 OpenAI 백엔드가 요구하는 계정 식별자
+      return t.accountId ? { 'chatgpt-account-id': t.accountId } : {};
     },
   });
 }

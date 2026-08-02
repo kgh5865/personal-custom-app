@@ -1,9 +1,15 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { getOAuth, setApiKeyMode, clearAuth, getAuthMode, type AuthMode } from '../lib/oauth';
+  import {
+    getOAuth, setApiKeyMode, clearAuth, getAuthMode,
+    preparePkce, providePastedCode, cancelPendingCode,
+    type AuthMode,
+  } from '../lib/oauth';
 
   let mode: AuthMode | null = null;
   let apiKey = '';
+  let pastedCode = '';
+  let awaitingCode = false;
   let busy = false;
   let error = '';
 
@@ -20,14 +26,33 @@
   async function loginOAuth() {
     busy = true; error = '';
     try {
+      await preparePkce();
       const o = await getOAuth();
-      await o.login();
+      // login() 은 waitForCode() 에서 대기 — 그 사이 UI 는 붙여넣기 입력을 노출
+      awaitingCode = true;
+      const p = o.login();
+      await refresh(); // 브라우저 열림 직후 상태는 아직 이전 그대로
+      await p;
+      awaitingCode = false;
+      pastedCode = '';
       await refresh();
     } catch (e: any) {
       error = e?.message ?? String(e);
+      awaitingCode = false;
     } finally {
       busy = false;
     }
+  }
+
+  function submitCode() {
+    if (!pastedCode.trim()) return;
+    providePastedCode(pastedCode.trim());
+  }
+
+  function cancelLogin() {
+    cancelPendingCode();
+    awaitingCode = false;
+    pastedCode = '';
   }
 
   async function saveApiKey() {
@@ -63,56 +88,102 @@
   }
 </script>
 
-<div class="p-4 space-y-4 max-w-xl">
-  <header class="pt-2">
-    <h1 class="text-2xl font-medium text-on-surface">설정</h1>
+<div class="px-5 pt-4 pb-8 space-y-6 max-w-xl">
+  <header class="pt-3 pb-1">
+    <h1 class="text-[26px] font-extrabold text-toss-text-strong tracking-tight leading-tight">
+      설정
+    </h1>
   </header>
 
-  <section class="bg-surface-container rounded-md-lg p-4 space-y-3 shadow-md-1">
+  <section class="bg-toss-surface rounded-toss-card p-5 space-y-4">
     <div class="flex items-center gap-3">
-      <span class="msym text-primary">smart_toy</span>
-      <h2 class="font-medium text-on-surface">ChatGPT 연동</h2>
+      <div class="w-10 h-10 rounded-toss-chip bg-toss-blue-light flex items-center justify-center">
+        <span class="msym text-toss-blue" style="font-size: 22px;">smart_toy</span>
+      </div>
+      <div class="flex-1 min-w-0">
+        <h2 class="font-bold text-[16px] text-toss-text-strong tracking-tight">ChatGPT 연동</h2>
+        <p class="text-[13px] text-toss-text-weak font-medium truncate mt-0.5">{modeLabel(mode)}</p>
+      </div>
     </div>
-    <p class="text-sm text-on-surface-variant">현재 상태: {modeLabel(mode)}</p>
 
     {#if !mode}
-      <button
-        on:click={loginOAuth}
-        disabled={busy}
-        class="md-ripple bg-primary text-on-primary rounded-md-xl px-4 py-2.5 w-full font-medium shadow-md-1 disabled:opacity-50"
-      >
-        ChatGPT로 로그인 (브라우저)
-      </button>
-      <div class="flex items-center gap-3 text-xs text-on-surface-variant">
-        <div class="flex-1 h-px bg-outline-variant"></div>
-        <span>또는</span>
-        <div class="flex-1 h-px bg-outline-variant"></div>
+      <div class="space-y-3 pt-1">
+        {#if !awaitingCode}
+          <button
+            on:click={loginOAuth}
+            disabled={busy}
+            class="md-ripple w-full bg-toss-blue text-white rounded-toss-btn h-[54px] font-bold text-[17px]
+                   hover:bg-toss-blue-hover disabled:bg-toss-bg-soft disabled:text-toss-text-disabled"
+          >
+            ChatGPT로 로그인
+          </button>
+        {:else}
+          <div class="bg-toss-bg-soft rounded-toss-btn p-3 text-[13px] text-toss-text font-medium leading-snug">
+            브라우저에서 ChatGPT 로그인을 완료하면 <code>localhost:1455</code> 로 리다이렉트됩니다.
+            연결 실패 페이지가 뜨더라도 주소창의 <code>?code=…</code> 값(또는 URL 전체)을 복사해 아래에 붙여넣어 주세요.
+          </div>
+          <input
+            bind:value={pastedCode}
+            type="text"
+            placeholder="여기에 code 또는 전체 URL 붙여넣기"
+            class="w-full bg-toss-bg-soft border-0 rounded-toss-btn px-4 h-12 text-toss-text-strong
+                   placeholder:text-toss-text-weak outline-none font-semibold text-[15px]
+                   focus:bg-toss-blue-light focus:ring-2 focus:ring-toss-blue"
+          />
+          <div class="flex gap-2">
+            <button
+              on:click={submitCode}
+              disabled={!pastedCode.trim()}
+              class="md-ripple flex-1 bg-toss-blue text-white rounded-toss-btn h-[54px] font-bold text-[17px]
+                     hover:bg-toss-blue-hover disabled:bg-toss-bg-soft disabled:text-toss-text-disabled"
+            >
+              연결하기
+            </button>
+            <button
+              on:click={cancelLogin}
+              class="md-ripple bg-toss-bg-soft text-toss-text-strong rounded-toss-btn h-[54px] px-5 font-bold text-[15px]"
+            >
+              취소
+            </button>
+          </div>
+        {/if}
+
+        <div class="flex items-center gap-3 text-[12px] text-toss-text-weak font-medium py-1">
+          <div class="flex-1 h-px bg-toss-line"></div>
+          <span>또는</span>
+          <div class="flex-1 h-px bg-toss-line"></div>
+        </div>
+
+        <input
+          bind:value={apiKey}
+          type="password"
+          placeholder="OpenAI API Key (sk-...)"
+          class="w-full bg-toss-bg-soft border-0 rounded-toss-btn px-4 h-12 text-toss-text-strong
+                 placeholder:text-toss-text-weak outline-none font-semibold text-[15px]
+                 focus:bg-toss-blue-light focus:ring-2 focus:ring-toss-blue"
+        />
+        <button
+          on:click={saveApiKey}
+          disabled={busy || !apiKey.trim()}
+          class="md-ripple w-full bg-toss-bg-soft text-toss-text-strong rounded-toss-btn h-[54px]
+                 font-bold text-[17px] disabled:text-toss-text-disabled"
+        >
+          API Key로 사용
+        </button>
       </div>
-      <input
-        bind:value={apiKey}
-        type="password"
-        placeholder="OpenAI API Key (sk-...)"
-        class="w-full bg-surface-container-high border-0 rounded-md-sm px-3 py-2.5 text-on-surface placeholder:text-on-surface-variant outline-none focus:ring-2 focus:ring-primary"
-      />
-      <button
-        on:click={saveApiKey}
-        disabled={busy || !apiKey.trim()}
-        class="md-ripple bg-secondary-container text-on-secondary-container rounded-md-xl px-4 py-2.5 w-full font-medium disabled:opacity-50"
-      >
-        API Key로 사용
-      </button>
     {:else}
       <button
         on:click={logout}
         disabled={busy}
-        class="md-ripple bg-md-error text-on-md-error rounded-md-xl px-4 py-2.5 w-full font-medium shadow-md-1 disabled:opacity-50"
+        class="md-ripple w-full bg-toss-bg-soft text-toss-error rounded-toss-btn h-[54px]
+               font-bold text-[17px] disabled:opacity-50"
       >
         로그아웃 / 인증 초기화
       </button>
     {/if}
 
     {#if error}
-      <div class="text-md-error text-sm">{error}</div>
+      <div class="text-toss-error text-[13px] font-medium">{error}</div>
     {/if}
   </section>
 </div>

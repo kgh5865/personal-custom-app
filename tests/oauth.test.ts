@@ -1,9 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { createOAuth, type OAuthDeps, type Tokens } from '../src/lib/oauth';
+import { createOAuth, generatePkce, type OAuthDeps, type Tokens } from '../src/lib/oauth';
 import { setApiKeyMode, getAuthMode, clearAuth } from '../src/lib/oauth';
 import { Preferences } from '@capacitor/preferences';
 
-// Mock Capacitor plugins that aren't available in jsdom
 vi.mock('@capacitor/browser', () => ({ Browser: { open: vi.fn(), close: vi.fn() } }));
 vi.mock('@capacitor/app', () => ({ App: { addListener: vi.fn() } }));
 
@@ -21,24 +20,45 @@ function makeDeps(overrides: Partial<OAuthDeps> = {}): OAuthDeps {
   return {
     secure: makeSecure(),
     openBrowser: vi.fn(async (_url: string) => {}),
-    waitForCallback: vi.fn(async () => ({ code: 'CODE123' })),
-    exchangeCode: vi.fn(async (code: string) => ({ access: 'A:' + code, refresh: 'R:' + code, expiresAt: Date.now() + 1000_000 })),
-    refreshTokens: vi.fn(async (r: string) => ({ access: 'A2:' + r, refresh: r, expiresAt: Date.now() + 1000_000 })),
-    buildAuthUrl: () => 'https://auth.openai.com/oauth/authorize?test=1',
+    waitForCode: vi.fn(async () => 'CODE123'),
+    exchangeCode: vi.fn(async (code: string, verifier: string) => ({
+      access: 'A:' + code, refresh: 'R:' + code, expiresAt: Date.now() + 1_000_000, accountId: 'acct-1', idToken: 'id.' + verifier,
+    })),
+    refreshTokens: vi.fn(async (r: string) => ({
+      access: 'A2:' + r, refresh: r, expiresAt: Date.now() + 1_000_000,
+    })),
+    buildAuthUrl: ({ challenge, state }) =>
+      `https://auth.openai.com/oauth/authorize?code_challenge=${challenge}&state=${state}`,
+    pkce: () => ({ verifier: 'v-test', challenge: 'c-test', state: 's-test' }),
     ...overrides,
   };
 }
 
 describe('oauth manager', () => {
-  it('login opens browser then exchanges code then stores tokens', async () => {
+  it('login opens browser then exchanges code with verifier then stores tokens', async () => {
     const deps = makeDeps();
     const oauth = createOAuth(deps);
     const t = await oauth.login();
-    expect(deps.openBrowser).toHaveBeenCalledWith('https://auth.openai.com/oauth/authorize?test=1');
-    expect(deps.waitForCallback).toHaveBeenCalled();
-    expect(deps.exchangeCode).toHaveBeenCalledWith('CODE123');
+    expect(deps.openBrowser).toHaveBeenCalledWith(expect.stringContaining('code_challenge=c-test'));
+    expect(deps.waitForCode).toHaveBeenCalled();
+    expect(deps.exchangeCode).toHaveBeenCalledWith('CODE123', 'v-test');
     expect(t.access).toBe('A:CODE123');
+    expect(t.accountId).toBe('acct-1');
     expect(await oauth.currentTokens()).toEqual(t);
+  });
+
+  it('login strips code#state suffix before exchange', async () => {
+    const deps = makeDeps({ waitForCode: vi.fn(async () => 'ABC#STATE') });
+    const oauth = createOAuth(deps);
+    await oauth.login();
+    expect(deps.exchangeCode).toHaveBeenCalledWith('ABC', 'v-test');
+  });
+
+  it('login accepts full URL and extracts code param', async () => {
+    const deps = makeDeps({ waitForCode: vi.fn(async () => 'http://localhost:1455/auth/callback?code=XYZ&state=s') });
+    const oauth = createOAuth(deps);
+    await oauth.login();
+    expect(deps.exchangeCode).toHaveBeenCalledWith('XYZ', 'v-test');
   });
 
   it('currentTokens returns null when not logged in', async () => {
@@ -55,15 +75,16 @@ describe('oauth manager', () => {
     expect(deps.refreshTokens).not.toHaveBeenCalled();
   });
 
-  it('getValidTokens refreshes when expired', async () => {
+  it('getValidTokens refreshes when expired and preserves accountId', async () => {
     const deps = makeDeps({
-      exchangeCode: vi.fn(async () => ({ access: 'old', refresh: 'r1', expiresAt: Date.now() - 1 })),
+      exchangeCode: vi.fn(async () => ({ access: 'old', refresh: 'r1', expiresAt: Date.now() - 1, accountId: 'acct-keep' })),
     });
     const oauth = createOAuth(deps);
     await oauth.login();
     const t = await oauth.getValidTokens();
     expect(deps.refreshTokens).toHaveBeenCalledWith('r1');
     expect(t.access).toBe('A2:r1');
+    expect(t.accountId).toBe('acct-keep');
   });
 
   it('getValidTokens refreshes when within 30s of expiry', async () => {
@@ -101,10 +122,27 @@ describe('oauth manager', () => {
   });
 });
 
+describe('generatePkce', () => {
+  it('returns verifier/challenge/state with base64url chars only', async () => {
+    const { verifier, challenge, state } = await generatePkce();
+    const re = /^[A-Za-z0-9_-]+$/;
+    expect(verifier).toMatch(re);
+    expect(challenge).toMatch(re);
+    expect(state).toMatch(re);
+    expect(verifier.length).toBeGreaterThan(20);
+    expect(challenge.length).toBeGreaterThan(20);
+  });
+
+  it('generates distinct values on subsequent calls', async () => {
+    const a = await generatePkce();
+    const b = await generatePkce();
+    expect(a.verifier).not.toBe(b.verifier);
+    expect(a.state).not.toBe(b.state);
+  });
+});
+
 describe('api key fallback', () => {
   beforeEach(() => {
-    // Reset the mocked Preferences store + the OAuth singleton state by re-importing isn't trivial,
-    // so use the mock's __reset() helper to clear keys.
     (Preferences as any).__reset?.();
   });
 
@@ -125,7 +163,6 @@ describe('api key fallback', () => {
   });
 
   it('api-key mode takes precedence over oauth presence', async () => {
-    // Set api-key mode; even if oauth tokens were present, api-key wins
     await setApiKeyMode('sk-explicit');
     const mode = await getAuthMode();
     expect(mode?.mode).toBe('apikey');
