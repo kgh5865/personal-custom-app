@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
+  import { Capacitor } from '@capacitor/core';
   import {
     getOAuth, setApiKeyMode, setGatewayMode, clearAuth, getAuthMode,
     preparePkce, providePastedCode, cancelPendingCode,
@@ -8,6 +9,7 @@
 
   type Provider = 'chatgpt' | 'apikey' | 'openclaw';
 
+  const isAndroid = Capacitor.getPlatform() === 'android';
   let mode: AuthMode | null = null;
   let selected: Provider = 'chatgpt';
   let apiKey = '';
@@ -166,7 +168,11 @@
       {#if selected === 'chatgpt'}
         <div class="space-y-3 pt-1">
           <p class="text-[12px] text-toss-text-weak font-medium leading-snug">
-            ChatGPT 구독 계정으로 로그인 (PoC). 표준 OpenAI 엔드포인트에서 401 이 뜰 수 있음.
+            {#if isAndroid}
+              ChatGPT 계정으로 로그인. 브라우저에서 승인하면 앱이 자동으로 돌아옵니다.
+            {:else}
+              브라우저 개발 모드: 로그인 후 리다이렉트 URL 을 붙여넣어야 합니다.
+            {/if}
           </p>
           {#if !awaitingCode}
             <button
@@ -176,6 +182,18 @@
                      hover:bg-toss-blue-hover disabled:bg-toss-bg-soft disabled:text-toss-text-disabled"
             >
               ChatGPT로 로그인
+            </button>
+          {:else if isAndroid}
+            <div class="bg-toss-bg-soft rounded-toss-btn p-4 text-center space-y-2">
+              <div class="msym text-toss-blue animate-spin" style="font-size:24px">progress_activity</div>
+              <p class="text-[13px] text-toss-text font-medium">브라우저에서 로그인 완료를 기다리는 중...</p>
+              <p class="text-[11px] text-toss-text-weak">승인 후 자동으로 돌아옵니다.</p>
+            </div>
+            <button
+              on:click={cancelLogin}
+              class="md-ripple w-full bg-toss-bg-soft text-toss-text-strong rounded-toss-btn h-[54px] font-bold text-[15px]"
+            >
+              취소
             </button>
           {:else}
             <div class="bg-toss-bg-soft rounded-toss-btn p-3 text-[13px] text-toss-text font-medium leading-snug">

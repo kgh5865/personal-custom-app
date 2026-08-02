@@ -202,6 +202,8 @@ export function cancelPendingCode(reason = '로그인 취소'): void {
     pendingCodeResolver = null;
     pendingCodeRejecter = null;
   }
+  // 안드로이드에서 loopback 대기 중이면 그것도 정리
+  cancelLoopback().catch(() => {});
 }
 
 function decodeJwtClaims(token: string): Record<string, unknown> | null {
@@ -223,17 +225,29 @@ function accountIdFromIdToken(idToken?: string): string | undefined {
 async function initProd(): Promise<OAuth> {
   try {
     const { Browser } = await import('@capacitor/browser');
+    const { Capacitor } = await import('@capacitor/core');
     const secure = await getSecureStore();
+    const isAndroid = Capacitor.getPlatform() === 'android';
 
     return createOAuth({
       secure,
       pkce: () => consumePkce(),
       buildAuthUrl: buildProdAuthUrl,
-      openBrowser: async (url) => { await Browser.open({ url }); },
-      waitForCode: () => new Promise<string>((resolve, reject) => {
-        pendingCodeResolver = resolve;
-        pendingCodeRejecter = reject;
-      }),
+      openBrowser: async (url) => {
+        if (isAndroid) {
+          // 로컬 콜백 서버를 먼저 띄운 뒤 브라우저를 연다. 순서 중요:
+          // 브라우저가 리다이렉트할 때 서버가 이미 대기 중이어야 code 를 놓치지 않는다.
+          await startLoopbackForCode();
+        }
+        await Browser.open({ url });
+      },
+      waitForCode: () => {
+        if (isAndroid) return waitForLoopbackCode();
+        return new Promise<string>((resolve, reject) => {
+          pendingCodeResolver = resolve;
+          pendingCodeRejecter = reject;
+        });
+      },
       exchangeCode: async (code, verifier) => {
         const r = await fetch(CODEX_TOKEN_URL, {
           method: 'POST',
@@ -287,4 +301,75 @@ async function initProd(): Promise<OAuth> {
 // UI 에서 login 을 시작하기 전에 호출: PKCE 를 미리 준비한다.
 export async function preparePkce(): Promise<void> {
   pkceCache = await generatePkce();
+}
+
+// ─── Android loopback OAuth callback (RFC 8252) ─────────────────────────────
+// Codex 클라이언트는 http://localhost:1455/auth/callback 만 redirect_uri 로 받으므로
+// 안드로이드에서도 같은 포트로 서버를 띄워야 한다. 커스텀 Capacitor 플러그인 참고:
+//   android/app/src/main/java/com/personal/lifeapp/LoopbackServerPlugin.java
+let loopbackPending: {
+  resolve: (code: string) => void;
+  reject: (err: Error) => void;
+  cleanup: () => Promise<void>;
+} | null = null;
+
+async function startLoopbackForCode(): Promise<void> {
+  const { LoopbackServer } = await import('./loopback');
+  await LoopbackServer.start({ port: 1455 });
+  const handle = await LoopbackServer.addListener('callback', (data) => {
+    if (!loopbackPending) return;
+    const p = loopbackPending;
+    loopbackPending = null;
+    p.cleanup().catch(() => {});
+    if (data.error) {
+      p.reject(new Error(`authorize error: ${data.error} ${data.errorDescription || ''}`.trim()));
+    } else if (data.code) {
+      p.resolve(data.code);
+    } else {
+      p.reject(new Error('콜백에 code 파라미터가 없습니다'));
+    }
+  });
+  const cleanup = async () => {
+    try { await handle.remove(); } catch { /* */ }
+    try { await LoopbackServer.stop(); } catch { /* */ }
+  };
+  // Placeholder — waitForLoopbackCode 가 실제 resolve/reject 를 채운다
+  loopbackPending = {
+    resolve: () => {},
+    reject: () => {},
+    cleanup,
+  };
+}
+
+function waitForLoopbackCode(): Promise<string> {
+  return new Promise<string>((resolve, reject) => {
+    if (!loopbackPending) {
+      reject(new Error('loopback server not started'));
+      return;
+    }
+    loopbackPending.resolve = resolve;
+    loopbackPending.reject = reject;
+    // 5 분 안에 안 오면 정리
+    const timeout = setTimeout(() => {
+      if (!loopbackPending) return;
+      const p = loopbackPending;
+      loopbackPending = null;
+      p.cleanup().catch(() => {});
+      reject(new Error('로그인 시간 초과 (5분)'));
+    }, 5 * 60_000);
+    // 원래 resolve/reject 를 감싸 타임아웃 clear
+    const origResolve = loopbackPending.resolve;
+    const origReject = loopbackPending.reject;
+    loopbackPending.resolve = (c) => { clearTimeout(timeout); origResolve(c); };
+    loopbackPending.reject = (e) => { clearTimeout(timeout); origReject(e); };
+  });
+}
+
+// 사용자가 UI 에서 로그인 취소 시 호출 (안드로이드 loopback 대기 중일 때)
+export async function cancelLoopback(): Promise<void> {
+  if (!loopbackPending) return;
+  const p = loopbackPending;
+  loopbackPending = null;
+  await p.cleanup();
+  p.reject(new Error('로그인 취소'));
 }
