@@ -17,100 +17,107 @@
   }
 </script>
 
-<div class="p-4 space-y-4 max-w-xl">
-  <header class="pt-2">
-    <h1 class="text-2xl font-medium text-on-surface">프로필</h1>
-    <p class="text-sm text-on-surface-variant mt-1">개인 정보는 기기 안에만 저장됩니다.</p>
+<div class="px-5 pt-4 pb-8 space-y-6 max-w-xl">
+  <header class="pt-3 pb-1">
+    <h1 class="text-[26px] font-extrabold text-toss-text-strong tracking-tight leading-tight">
+      프로필
+    </h1>
+    <p class="text-[15px] text-toss-text mt-1 font-medium">
+      개인 정보는 기기 안에만 저장됩니다.
+    </p>
   </header>
 
-  <div class="space-y-3">
+  <section class="bg-toss-surface rounded-toss-card p-5 space-y-4">
     <label class="block">
-      <span class="text-sm text-on-surface-variant px-1">출생연도</span>
+      <span class="block text-[13px] text-toss-text-weak font-semibold mb-1.5">출생연도</span>
       <input
         type="number"
         bind:value={form.birthYear}
-        class="mt-1 w-full bg-surface-container-high border-0 rounded-md-sm px-3 py-2.5
-               text-on-surface placeholder:text-on-surface-variant outline-none
-               focus:ring-2 focus:ring-primary"
+        class="w-full bg-toss-bg-soft border-0 rounded-toss-btn px-4 h-12
+               text-toss-text-strong placeholder:text-toss-text-weak outline-none
+               font-semibold text-[15px] toss-num focus:bg-toss-blue-light focus:ring-2 focus:ring-toss-blue"
       />
     </label>
 
     <label class="block">
-      <span class="text-sm text-on-surface-variant px-1">거주지</span>
+      <span class="block text-[13px] text-toss-text-weak font-semibold mb-1.5">거주지</span>
       <input
         type="text"
         bind:value={form.region}
         placeholder="서울 강남구"
-        class="mt-1 w-full bg-surface-container-high border-0 rounded-md-sm px-3 py-2.5
-               text-on-surface placeholder:text-on-surface-variant outline-none
-               focus:ring-2 focus:ring-primary"
+        class="w-full bg-toss-bg-soft border-0 rounded-toss-btn px-4 h-12
+               text-toss-text-strong placeholder:text-toss-text-weak outline-none
+               font-semibold text-[15px] focus:bg-toss-blue-light focus:ring-2 focus:ring-toss-blue"
       />
     </label>
 
     <label class="block">
-      <span class="text-sm text-on-surface-variant px-1">직업</span>
+      <span class="block text-[13px] text-toss-text-weak font-semibold mb-1.5">직업</span>
       <input
         type="text"
         bind:value={form.job}
-        class="mt-1 w-full bg-surface-container-high border-0 rounded-md-sm px-3 py-2.5
-               text-on-surface placeholder:text-on-surface-variant outline-none
-               focus:ring-2 focus:ring-primary"
+        class="w-full bg-toss-bg-soft border-0 rounded-toss-btn px-4 h-12
+               text-toss-text-strong placeholder:text-toss-text-weak outline-none
+               font-semibold text-[15px] focus:bg-toss-blue-light focus:ring-2 focus:ring-toss-blue"
       />
     </label>
 
     <label class="block">
-      <span class="text-sm text-on-surface-variant px-1">연소득(만원)</span>
+      <span class="block text-[13px] text-toss-text-weak font-semibold mb-1.5">연소득(만원)</span>
       <input
         type="number"
         bind:value={form.income}
-        class="mt-1 w-full bg-surface-container-high border-0 rounded-md-sm px-3 py-2.5
-               text-on-surface placeholder:text-on-surface-variant outline-none
-               focus:ring-2 focus:ring-primary"
+        class="w-full bg-toss-bg-soft border-0 rounded-toss-btn px-4 h-12
+               text-toss-text-strong placeholder:text-toss-text-weak outline-none
+               font-semibold text-[15px] toss-num focus:bg-toss-blue-light focus:ring-2 focus:ring-toss-blue"
       />
     </label>
 
-    <label class="flex items-center gap-3 py-2">
+    <label class="flex items-center justify-between gap-3 py-2 border-t border-toss-line pt-4">
+      <span class="text-toss-text-strong font-bold text-[15px]">기혼</span>
       <input
         type="checkbox"
         bind:checked={form.married}
-        class="w-5 h-5 accent-primary"
+        class="w-5 h-5 accent-toss-blue"
       />
-      <span class="text-on-surface">기혼</span>
     </label>
 
     <label class="block">
-      <span class="text-sm text-on-surface-variant px-1">자녀 수</span>
+      <span class="block text-[13px] text-toss-text-weak font-semibold mb-1.5">자녀 수</span>
       <input
         type="number"
         bind:value={form.children}
-        class="mt-1 w-full bg-surface-container-high border-0 rounded-md-sm px-3 py-2.5
-               text-on-surface outline-none focus:ring-2 focus:ring-primary"
+        class="w-full bg-toss-bg-soft border-0 rounded-toss-btn px-4 h-12
+               text-toss-text-strong outline-none font-semibold text-[15px] toss-num
+               focus:bg-toss-blue-light focus:ring-2 focus:ring-toss-blue"
       />
     </label>
 
     <label class="block">
-      <span class="text-sm text-on-surface-variant px-1">메모</span>
+      <span class="block text-[13px] text-toss-text-weak font-semibold mb-1.5">메모</span>
       <textarea
         bind:value={form.notes}
         rows="3"
-        class="mt-1 w-full bg-surface-container-high border-0 rounded-md-sm px-3 py-2.5
-               text-on-surface outline-none focus:ring-2 focus:ring-primary resize-none"
+        class="w-full bg-toss-bg-soft border-0 rounded-toss-btn px-4 py-3
+               text-toss-text-strong outline-none font-medium text-[15px] resize-none
+               focus:bg-toss-blue-light focus:ring-2 focus:ring-toss-blue"
       ></textarea>
     </label>
-  </div>
+  </section>
 
-  <div class="flex items-center gap-3 pt-2">
+  <div class="space-y-2">
     <button
       on:click={onSave}
-      class="md-ripple bg-primary text-on-primary rounded-md-xl px-6 py-2.5 font-medium shadow-md-1"
+      class="md-ripple w-full bg-toss-blue text-white rounded-toss-btn h-[54px] font-bold text-[17px]
+             hover:bg-toss-blue-hover"
     >
       저장
     </button>
     {#if saved}
-      <span class="flex items-center gap-1 text-primary text-sm">
+      <div class="flex items-center justify-center gap-1.5 text-toss-blue text-[14px] font-bold">
         <span class="msym fill" style="font-size: 18px;">check_circle</span>
-        저장됨
-      </span>
+        저장됐어요
+      </div>
     {/if}
   </div>
 </div>

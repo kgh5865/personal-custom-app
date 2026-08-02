@@ -1,36 +1,66 @@
+@import url('https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.css');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 :root {
-  /* Material 3 baseline (light theme) — purple seed */
-  --md-sys-color-primary: #6750A4;
+  /* Toss design tokens */
+  --toss-blue: #3182F6;
+  --toss-blue-hover: #1B64DA;
+  --toss-blue-light: #E8F2FE;
+
+  --toss-bg: #F9FAFB;        /* page background */
+  --toss-bg-soft: #F2F4F6;   /* secondary surface / chip */
+  --toss-surface: #FFFFFF;   /* card */
+
+  --toss-text-strong: #191F28;
+  --toss-text: #4E5968;
+  --toss-text-weak: #8B95A1;
+  --toss-text-disabled: #B0B8C1;
+
+  --toss-line: #F2F4F6;
+  --toss-line-strong: #E5E8EB;
+
+  --toss-error: #F04452;
+  --toss-success: #00C471;
+  --toss-warning: #FFB020;
+
+  /* ---- Backwards-compatible mapping of existing MD3 class names ----
+     Keeps existing utility classes (bg-surface, bg-surface-container,
+     text-on-surface-variant, border-outline-variant, etc.) working but
+     re-skinned to Toss palette. */
+  --md-sys-color-primary: var(--toss-blue);
   --md-sys-color-on-primary: #FFFFFF;
-  --md-sys-color-primary-container: #EADDFF;
-  --md-sys-color-on-primary-container: #21005D;
-  --md-sys-color-secondary-container: #E8DEF8;
-  --md-sys-color-on-secondary-container: #1D192B;
-  --md-sys-color-surface: #FFFBFE;
-  --md-sys-color-surface-container: #F3EDF7;
-  --md-sys-color-surface-container-high: #ECE6F0;
-  --md-sys-color-surface-container-highest: #E6E0E9;
-  --md-sys-color-on-surface: #1C1B1F;
-  --md-sys-color-on-surface-variant: #49454F;
-  --md-sys-color-outline: #79747E;
-  --md-sys-color-outline-variant: #CAC4D0;
-  --md-sys-color-error: #B3261E;
+  --md-sys-color-primary-container: var(--toss-blue-light);
+  --md-sys-color-on-primary-container: #0F4FB1;
+  --md-sys-color-secondary-container: var(--toss-bg-soft);
+  --md-sys-color-on-secondary-container: var(--toss-blue);
+  --md-sys-color-surface: var(--toss-bg);
+  --md-sys-color-surface-container: var(--toss-surface);
+  --md-sys-color-surface-container-high: var(--toss-bg-soft);
+  --md-sys-color-surface-container-highest: var(--toss-line);
+  --md-sys-color-on-surface: var(--toss-text-strong);
+  --md-sys-color-on-surface-variant: var(--toss-text);
+  --md-sys-color-outline: var(--toss-line-strong);
+  --md-sys-color-outline-variant: var(--toss-line);
+  --md-sys-color-error: var(--toss-error);
   --md-sys-color-on-error: #FFFFFF;
 }
 
 html, body {
-  font-family: 'Roboto', system-ui, sans-serif;
-  background: var(--md-sys-color-surface);
-  color: var(--md-sys-color-on-surface);
+  font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, system-ui,
+    'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  background: var(--toss-bg);
+  color: var(--toss-text-strong);
   margin: 0;
   -webkit-tap-highlight-color: transparent;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  letter-spacing: -0.02em;
 }
 
-/* Material Symbols sizing */
+/* Material Symbols sizing — Toss also uses line icons, keep usable */
 .msym {
   font-family: 'Material Symbols Outlined';
   font-weight: normal;
@@ -50,22 +80,19 @@ html, body {
 }
 .msym.fill { font-variation-settings: 'FILL' 1; }
 
-/* MD3 ripple effect — pure CSS */
+/* Toss-style tap feedback: subtle scale + opacity, no ripple */
 .md-ripple {
   position: relative;
-  overflow: hidden;
   user-select: none;
+  transition: transform 0.12s ease, opacity 0.12s ease, background-color 0.15s ease;
 }
-.md-ripple::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  background: currentColor;
-  opacity: 0;
-  transition: opacity 0.15s;
-  pointer-events: none;
+.md-ripple:active {
+  transform: scale(0.97);
+  opacity: 0.85;
 }
-.md-ripple:active::after { opacity: 0.12; }
-@media (hover: hover) {
-  .md-ripple:hover::after { opacity: 0.08; }
+
+/* Toss number style — tabular numerals look crisper for amounts */
+.toss-num {
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.03em;
 }

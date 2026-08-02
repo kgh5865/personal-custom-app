@@ -50,13 +50,11 @@
           '한국어로 자연스럽게 응답하세요.',
         maxToolIterations: 5,
       });
-      // Note: pass history WITHOUT the just-appended user message; bridge prepends it
       const priorHistory = $messages.slice(0, -1);
       const r = await bridge.send(priorHistory, userMsg);
 
       await appendMessage({ role: 'assistant', content: r.text || '(빈 응답)' });
 
-      // If GPT touched domains, refresh the domain list (used by Home screen)
       const touched = r.toolEvents.some((e) =>
         ['create_domain', 'delete_domain', 'update_screen', 'patch_screen'].includes(e.name)
       );
@@ -79,19 +77,19 @@
   }
 </script>
 
-<div class="flex flex-col" style="height: calc(100vh - 80px);">
-  <header class="px-4 pt-3 pb-2">
-    <h1 class="text-2xl font-medium text-on-surface">챗</h1>
+<div class="flex flex-col bg-toss-bg" style="height: calc(100vh - 76px);">
+  <header class="px-5 pt-4 pb-3">
+    <h1 class="text-[26px] font-extrabold text-toss-text-strong tracking-tight">챗</h1>
   </header>
 
-  <div class="flex-1 overflow-y-auto px-3 pb-2 space-y-3">
+  <div class="flex-1 overflow-y-auto px-4 pb-3 space-y-2.5">
     {#each $messages as m}
       <div class={m.role === 'user' ? 'flex justify-end' : 'flex justify-start'}>
         <div
-          class="max-w-[80%] px-4 py-2.5 whitespace-pre-wrap break-words shadow-md-1
+          class="max-w-[82%] px-4 py-3 whitespace-pre-wrap break-words text-[15px] leading-relaxed font-medium
                  {m.role === 'user'
-                    ? 'bg-primary text-on-primary rounded-md-xl rounded-br-md-sm'
-                    : 'bg-surface-container text-on-surface rounded-md-xl rounded-bl-md-sm'}"
+                    ? 'bg-toss-blue text-white rounded-toss-card rounded-br-md'
+                    : 'bg-toss-surface text-toss-text-strong rounded-toss-card rounded-bl-md'}"
         >
           {m.content}
         </div>
@@ -99,35 +97,36 @@
     {/each}
     {#if busy}
       <div class="flex justify-start">
-        <div class="bg-surface-container px-4 py-2.5 rounded-md-xl flex items-center gap-2">
-          <span class="msym text-on-surface-variant animate-spin" style="font-size: 18px;">progress_activity</span>
-          <span class="text-sm text-on-surface-variant">생각 중...</span>
+        <div class="bg-toss-surface px-4 py-3 rounded-toss-card flex items-center gap-2">
+          <span class="msym text-toss-blue animate-spin" style="font-size: 18px;">progress_activity</span>
+          <span class="text-[14px] text-toss-text font-medium">생각 중...</span>
         </div>
       </div>
     {/if}
     {#if error}
-      <div class="text-md-error text-sm px-2">{error}</div>
+      <div class="text-toss-error text-[13px] px-2 font-medium">{error}</div>
     {/if}
   </div>
 
-  <div class="border-t border-outline-variant px-3 py-3 bg-surface">
-    <div class="flex items-end gap-2">
-      <div class="flex-1 bg-surface-container-high rounded-md-xl px-4 py-2.5">
+  <div class="px-4 pt-2 pb-3 bg-toss-bg">
+    <div class="flex items-center gap-2">
+      <div class="flex-1 bg-toss-surface rounded-toss-btn px-4 h-12 flex items-center border border-toss-line">
         <input
           bind:value={input}
           on:keydown={onKey}
           disabled={busy}
-          class="w-full bg-transparent outline-none text-on-surface placeholder:text-on-surface-variant"
+          class="w-full bg-transparent outline-none text-toss-text-strong placeholder:text-toss-text-weak font-medium text-[15px]"
           placeholder="GPT에게 말하기"
         />
       </div>
       <button
         on:click={send}
         disabled={busy || !input.trim()}
-        class="md-ripple bg-primary text-on-primary rounded-full w-12 h-12 flex items-center justify-center shadow-md-1 disabled:opacity-40"
+        class="md-ripple bg-toss-blue text-white rounded-toss-btn w-12 h-12 flex items-center justify-center
+               disabled:bg-toss-bg-soft disabled:text-toss-text-disabled"
         aria-label="전송"
       >
-        <span class="msym">send</span>
+        <span class="msym" style="font-size: 22px;">arrow_upward</span>
       </button>
     </div>
   </div>

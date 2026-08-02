@@ -3,7 +3,35 @@ export default {
   content: ['./index.html', './src/**/*.{svelte,ts}'],
   theme: {
     extend: {
+      fontFamily: {
+        sans: [
+          'Pretendard',
+          '-apple-system',
+          'BlinkMacSystemFont',
+          'system-ui',
+          'Segoe UI',
+          'Roboto',
+          'sans-serif',
+        ],
+      },
       colors: {
+        /* Toss-native tokens */
+        'toss-blue': '#3182F6',
+        'toss-blue-hover': '#1B64DA',
+        'toss-blue-light': '#E8F2FE',
+        'toss-bg': '#F9FAFB',
+        'toss-bg-soft': '#F2F4F6',
+        'toss-surface': '#FFFFFF',
+        'toss-text-strong': '#191F28',
+        'toss-text': '#4E5968',
+        'toss-text-weak': '#8B95A1',
+        'toss-text-disabled': '#B0B8C1',
+        'toss-line': '#F2F4F6',
+        'toss-line-strong': '#E5E8EB',
+        'toss-error': '#F04452',
+        'toss-success': '#00C471',
+
+        /* Backwards-compat aliases for existing MD3 class names */
         primary: 'var(--md-sys-color-primary)',
         'on-primary': 'var(--md-sys-color-on-primary)',
         'primary-container': 'var(--md-sys-color-primary-container)',
@@ -22,14 +50,19 @@ export default {
         'on-md-error': 'var(--md-sys-color-on-error)',
       },
       borderRadius: {
-        'md-sm': '8px',
-        'md-md': '12px',
-        'md-lg': '16px',
-        'md-xl': '28px',
+        'md-sm': '10px',
+        'md-md': '14px',
+        'md-lg': '18px',
+        'md-xl': '20px',
+        'toss-chip': '8px',
+        'toss-btn': '12px',
+        'toss-card': '18px',
+        'toss-xl': '24px',
       },
       boxShadow: {
-        'md-1': '0 1px 2px rgba(0,0,0,0.3), 0 1px 3px 1px rgba(0,0,0,0.15)',
-        'md-2': '0 1px 2px rgba(0,0,0,0.3), 0 2px 6px 2px rgba(0,0,0,0.15)',
+        'md-1': '0 1px 3px rgba(0,0,0,0.04)',
+        'md-2': '0 2px 8px rgba(0,0,0,0.06)',
+        'toss-card': '0 1px 3px rgba(0,0,0,0.04)',
       },
     },
   },

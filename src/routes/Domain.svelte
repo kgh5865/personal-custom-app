@@ -73,29 +73,31 @@
   });
 </script>
 
-<header class="flex items-center gap-1 px-2 py-2 bg-surface border-b border-outline-variant">
-  <button on:click={() => history.back()} class="md-ripple w-12 h-12 flex items-center justify-center rounded-full" aria-label="뒤로">
-    <span class="msym text-on-surface">arrow_back</span>
+<header class="flex items-center gap-1 px-2 h-14 bg-toss-surface border-b border-toss-line">
+  <button on:click={() => history.back()} class="md-ripple w-11 h-11 flex items-center justify-center rounded-full" aria-label="뒤로">
+    <span class="msym text-toss-text-strong" style="font-size: 24px;">arrow_back</span>
   </button>
-  <div class="flex-1 font-medium text-on-surface truncate">{params.name}</div>
-  <button on:click={revert} class="md-ripple w-12 h-12 flex items-center justify-center rounded-full" aria-label="되돌리기">
-    <span class="msym text-on-surface">undo</span>
+  <div class="flex-1 font-bold text-[17px] text-toss-text-strong truncate tracking-tight px-1">
+    {params.name}
+  </div>
+  <button on:click={revert} class="md-ripple w-11 h-11 flex items-center justify-center rounded-full" aria-label="되돌리기">
+    <span class="msym text-toss-text" style="font-size: 22px;">undo</span>
   </button>
-  <button on:click={remove} class="md-ripple w-12 h-12 flex items-center justify-center rounded-full text-md-error" aria-label="삭제">
-    <span class="msym">delete</span>
+  <button on:click={remove} class="md-ripple w-11 h-11 flex items-center justify-center rounded-full text-toss-error" aria-label="삭제">
+    <span class="msym" style="font-size: 22px;">delete</span>
   </button>
 </header>
 
 {#if error}
-  <div class="p-4 text-md-error">{error}</div>
+  <div class="p-5 text-toss-error font-medium">{error}</div>
 {:else if srcdoc}
   <iframe
     {srcdoc}
-    class="w-full"
+    class="w-full bg-toss-bg"
     style="height: calc(100vh - 56px); border: 0;"
     sandbox="allow-scripts"
     title={params.name}
   ></iframe>
 {:else}
-  <div class="p-4 text-on-surface-variant">로딩 중...</div>
+  <div class="p-5 text-toss-text-weak font-medium">로딩 중...</div>
 {/if}
