@@ -82,7 +82,7 @@ describe('gpt bridge', () => {
     expect(r.toolEvents[0].result.ok).toBe(true);
   });
 
-  it('on second iteration, input includes tool call + tool output items', async () => {
+  it('on second iteration, input includes assistant tool_calls + tool result messages', async () => {
     const deps = makeDeps([
       { text: '', toolCalls: [{ id: 'c1', name: 'x', args: { a: 1 } }], raw: {} },
       { text: 'done', toolCalls: [], raw: {} },
@@ -92,9 +92,13 @@ describe('gpt bridge', () => {
     expect((deps.openai.respond as any).mock.calls).toHaveLength(2);
     const secondCall = (deps.openai.respond as any).mock.calls[1][0];
     const inputs = secondCall.input;
-    // last 2 items should be the function_call and function_call_output
-    expect(inputs[inputs.length - 2]).toMatchObject({ type: 'function_call', call_id: 'c1', name: 'x' });
-    expect(inputs[inputs.length - 1]).toMatchObject({ type: 'function_call_output', call_id: 'c1' });
+    // last 2 items should be the assistant tool_calls and tool result
+    expect(inputs[inputs.length - 2]).toMatchObject({
+      role: 'assistant',
+      content: null,
+      tool_calls: [{ id: 'c1', type: 'function', function: { name: 'x' } }],
+    });
+    expect(inputs[inputs.length - 1]).toMatchObject({ role: 'tool', tool_call_id: 'c1' });
   });
 
   it('handles multiple tool calls in one response', async () => {
@@ -120,11 +124,11 @@ describe('gpt bridge', () => {
     const r = await bridge.send([], 'go');
     expect(r.text).toBe('문제가 있어요');
     expect(r.toolEvents[0].result.ok).toBe(false);
-    // The function_call_output sent back should serialize the failure result
+    // The tool result message sent back should serialize the failure result
     const secondCall = (deps.openai.respond as any).mock.calls[1][0];
     const inputs = secondCall.input;
     const lastOutput = inputs[inputs.length - 1];
-    expect(lastOutput.output).toContain('boom');
+    expect(lastOutput.content).toContain('boom');
   });
 
   it('throws when exceeding maxToolIterations', async () => {

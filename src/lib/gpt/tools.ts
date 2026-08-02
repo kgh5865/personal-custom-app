@@ -1,7 +1,6 @@
-// OpenAI Responses API tool schema definitions
-export const TOOL_SCHEMAS = [
+// OpenAI Chat Completions tool schema definitions
+const TOOL_DEFS = [
   {
-    type: 'function',
     name: 'create_domain',
     description: 'Create a new domain (a screen the user can navigate to from home).',
     parameters: {
@@ -15,13 +14,11 @@ export const TOOL_SCHEMAS = [
     },
   },
   {
-    type: 'function',
     name: 'list_domains',
     description: 'List all registered domains.',
     parameters: { type: 'object', properties: {} },
   },
   {
-    type: 'function',
     name: 'read_screen',
     description: 'Read current HTML/CSS/JS of a domain.',
     parameters: {
@@ -31,7 +28,6 @@ export const TOOL_SCHEMAS = [
     },
   },
   {
-    type: 'function',
     name: 'update_screen',
     description: 'Partially update HTML/CSS/JS of a domain — only the provided fields (html/css/js) are written, others are left unchanged. Previous version is backed up automatically.',
     parameters: {
@@ -46,7 +42,6 @@ export const TOOL_SCHEMAS = [
     },
   },
   {
-    type: 'function',
     name: 'revert_screen',
     description: 'Revert a domain screen to a previous version.',
     parameters: {
@@ -56,7 +51,6 @@ export const TOOL_SCHEMAS = [
     },
   },
   {
-    type: 'function',
     name: 'delete_domain',
     description: 'Permanently delete a domain.',
     parameters: {
@@ -66,13 +60,11 @@ export const TOOL_SCHEMAS = [
     },
   },
   {
-    type: 'function',
     name: 'get_user_profile',
     description: 'Get the user profile.',
     parameters: { type: 'object', properties: {} },
   },
   {
-    type: 'function',
     name: 'update_user_profile',
     description: 'Merge updates into the user profile.',
     parameters: {
@@ -83,4 +75,9 @@ export const TOOL_SCHEMAS = [
   },
 ] as const;
 
-export type ToolName = (typeof TOOL_SCHEMAS)[number]['name'];
+export type ToolName = (typeof TOOL_DEFS)[number]['name'];
+
+export const TOOL_SCHEMAS = TOOL_DEFS.map(d => ({
+  type: 'function' as const,
+  function: d,
+}));

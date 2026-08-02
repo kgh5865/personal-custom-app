@@ -44,19 +44,23 @@ export function createBridge(deps: BridgeDeps) {
         if (i === deps.maxToolIterations) {
           throw new Error(`exceeded max tool iterations (${deps.maxToolIterations})`);
         }
+        // assistant tool_calls 메시지가 먼저 와야 함
+        input.push({
+          role: 'assistant',
+          content: null,
+          tool_calls: r.toolCalls.map(tc => ({
+            id: tc.id,
+            type: 'function',
+            function: { name: tc.name, arguments: JSON.stringify(tc.args) },
+          })),
+        });
         for (const tc of r.toolCalls) {
           const result = await deps.registry.invoke(tc.name, tc.args);
           toolEvents.push({ name: tc.name, args: tc.args, result });
           input.push({
-            type: 'function_call',
-            call_id: tc.id,
-            name: tc.name,
-            arguments: JSON.stringify(tc.args),
-          });
-          input.push({
-            type: 'function_call_output',
-            call_id: tc.id,
-            output: JSON.stringify(result),
+            role: 'tool',
+            tool_call_id: tc.id,
+            content: JSON.stringify(result),
           });
         }
       }

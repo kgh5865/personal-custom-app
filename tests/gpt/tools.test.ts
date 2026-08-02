@@ -3,20 +3,20 @@ import { TOOL_SCHEMAS } from '../../src/lib/gpt/tools';
 
 describe('tool schemas', () => {
   it('all have unique names', () => {
-    const names = TOOL_SCHEMAS.map(t => t.name);
+    const names = TOOL_SCHEMAS.map(t => t.function.name);
     expect(new Set(names).size).toBe(names.length);
   });
 
   it('all have non-empty descriptions and parameters object', () => {
     for (const t of TOOL_SCHEMAS) {
-      expect(t.description.length).toBeGreaterThan(0);
-      expect(t.parameters).toBeDefined();
-      expect(t.parameters.type).toBe('object');
+      expect(t.function.description.length).toBeGreaterThan(0);
+      expect(t.function.parameters).toBeDefined();
+      expect(t.function.parameters.type).toBe('object');
     }
   });
 
   it('includes the core screen-manipulation tools', () => {
-    const names = TOOL_SCHEMAS.map(t => t.name as string);
+    const names = TOOL_SCHEMAS.map(t => t.function.name as string);
     expect(names).toContain('create_domain');
     expect(names).toContain('update_screen');
     expect(names).toContain('revert_screen');
@@ -26,7 +26,7 @@ describe('tool schemas', () => {
   });
 
   it('includes profile tools', () => {
-    const names = TOOL_SCHEMAS.map(t => t.name as string);
+    const names = TOOL_SCHEMAS.map(t => t.function.name as string);
     expect(names).toContain('get_user_profile');
     expect(names).toContain('update_user_profile');
   });
