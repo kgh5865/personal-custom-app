@@ -6,6 +6,10 @@
     preparePkce, providePastedCode, cancelPendingCode,
     type AuthMode,
   } from '../lib/oauth';
+  import {
+    APP_VERSION, checkForUpdate, downloadAndInstall,
+    type UpdateCheck, type DownloadProgress,
+  } from '../lib/update';
 
   type Provider = 'chatgpt' | 'apikey' | 'openclaw';
 
@@ -29,7 +33,48 @@
     }
   }
 
-  onMount(refresh);
+  // ─── 앱 자동 업데이트 ─────────────────────────────────────────
+  let updateCheck: UpdateCheck | null = null;
+  let updateChecking = false;
+  let updateInstalling = false;
+  let updateProgress: DownloadProgress | null = null;
+  let updateError = '';
+
+  async function runUpdateCheck(silent = false) {
+    updateChecking = true;
+    if (!silent) updateError = '';
+    try {
+      updateCheck = await checkForUpdate();
+    } catch (e: any) {
+      if (!silent) updateError = e?.message ?? String(e);
+    } finally {
+      updateChecking = false;
+    }
+  }
+
+  async function runInstall() {
+    if (!updateCheck?.latest) return;
+    updateInstalling = true;
+    updateError = '';
+    updateProgress = { received: 0, total: updateCheck.latest.apkSize };
+    try {
+      await downloadAndInstall(updateCheck.latest, (p) => (updateProgress = p));
+    } catch (e: any) {
+      updateError = e?.message ?? String(e);
+    } finally {
+      updateInstalling = false;
+    }
+  }
+
+  function fmtMB(bytes: number): string {
+    return (bytes / 1024 / 1024).toFixed(1) + ' MB';
+  }
+
+  onMount(() => {
+    refresh();
+    // 앱 실행 시 조용히 업데이트 확인 (에러는 삼킴)
+    if (isAndroid) runUpdateCheck(true);
+  });
 
   async function loginOAuth() {
     busy = true; error = '';
@@ -291,6 +336,82 @@
 
     {#if error}
       <div class="text-toss-error text-[13px] font-medium">{error}</div>
+    {/if}
+  </section>
+
+  <!-- ─── 앱 업데이트 ────────────────────────────────────────────────────── -->
+  <section class="bg-toss-surface rounded-toss-card p-5 space-y-4">
+    <div class="flex items-center gap-3">
+      <div class="w-10 h-10 rounded-toss-chip bg-toss-blue-light flex items-center justify-center">
+        <span class="msym text-toss-blue" style="font-size: 22px;">system_update</span>
+      </div>
+      <div class="flex-1 min-w-0">
+        <h2 class="font-bold text-[16px] text-toss-text-strong tracking-tight">앱 업데이트</h2>
+        <p class="text-[13px] text-toss-text-weak font-medium truncate mt-0.5">
+          현재 버전 v{APP_VERSION}
+          {#if updateCheck?.latest}
+            · 최신 v{updateCheck.latest.version}
+          {/if}
+        </p>
+      </div>
+    </div>
+
+    {#if !updateCheck?.configured && updateCheck !== null}
+      <div class="bg-toss-bg-soft rounded-toss-btn p-3 text-[12px] text-toss-text-weak font-medium leading-snug">
+        업데이트 서버가 설정되지 않았습니다. <code>.env</code> 에
+        <code>VITE_UPDATE_REPO=owner/repo</code> 를 추가하고 재빌드하세요.
+      </div>
+    {:else if updateCheck?.hasUpdate}
+      <div class="bg-toss-blue-light rounded-toss-btn p-3 space-y-2">
+        <p class="text-[14px] text-toss-text-strong font-bold">
+          새 버전 v{updateCheck.latest!.version} 이 있습니다
+        </p>
+        {#if updateCheck.latest!.notes}
+          <p class="text-[12px] text-toss-text font-medium whitespace-pre-wrap leading-snug">
+            {updateCheck.latest!.notes}
+          </p>
+        {/if}
+      </div>
+      {#if updateInstalling && updateProgress}
+        <div class="bg-toss-bg-soft rounded-toss-btn p-3 space-y-2">
+          <div class="flex justify-between text-[12px] text-toss-text-weak font-semibold">
+            <span>다운로드 중...</span>
+            <span>
+              {fmtMB(updateProgress.received)}
+              {#if updateProgress.total}/ {fmtMB(updateProgress.total)}{/if}
+            </span>
+          </div>
+          {#if updateProgress.total > 0}
+            <div class="h-1.5 bg-toss-line rounded-full overflow-hidden">
+              <div class="h-full bg-toss-blue transition-all"
+                   style="width: {(updateProgress.received / updateProgress.total * 100).toFixed(1)}%"></div>
+            </div>
+          {/if}
+        </div>
+      {:else}
+        <button
+          on:click={runInstall}
+          disabled={updateInstalling}
+          class="md-ripple w-full bg-toss-blue text-white rounded-toss-btn h-[54px]
+                 font-bold text-[17px] hover:bg-toss-blue-hover
+                 disabled:bg-toss-bg-soft disabled:text-toss-text-disabled"
+        >
+          지금 업데이트 ({fmtMB(updateCheck.latest!.apkSize)})
+        </button>
+      {/if}
+    {:else}
+      <button
+        on:click={() => runUpdateCheck(false)}
+        disabled={updateChecking}
+        class="md-ripple w-full bg-toss-bg-soft text-toss-text-strong rounded-toss-btn h-[54px]
+               font-bold text-[15px] disabled:opacity-50"
+      >
+        {updateChecking ? '확인 중...' : (updateCheck ? '최신 버전입니다' : '업데이트 확인')}
+      </button>
+    {/if}
+
+    {#if updateError}
+      <div class="text-toss-error text-[13px] font-medium">{updateError}</div>
     {/if}
   </section>
 </div>
