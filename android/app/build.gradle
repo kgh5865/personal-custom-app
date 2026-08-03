@@ -1,5 +1,14 @@
 apply plugin: 'com.android.application'
 
+import groovy.json.JsonSlurper
+
+// package.json 을 앱 버전의 단일 소스로 사용. CI 에서 -PversionCode=NNN 로 code 는 덮어씀.
+def readPackageVersion() {
+    def f = file("$rootDir/../package.json")
+    if (!f.exists()) return "1.0.0"
+    return new JsonSlurper().parse(f).version ?: "1.0.0"
+}
+
 android {
     namespace = "com.personal.lifeapp"
     compileSdk = rootProject.ext.compileSdkVersion
@@ -7,8 +16,8 @@ android {
         applicationId "com.personal.lifeapp"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 1
-        versionName "1.0"
+        versionCode (project.hasProperty('versionCode') ? project.versionCode.toInteger() : 1)
+        versionName (project.hasProperty('versionName') ? project.versionName : readPackageVersion())
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
