@@ -19,6 +19,7 @@ describe('tool schemas', () => {
     const names = TOOL_SCHEMAS.map(t => t.function.name as string);
     expect(names).toContain('create_domain');
     expect(names).toContain('update_screen');
+    expect(names).toContain('patch_screen');
     expect(names).toContain('revert_screen');
     expect(names).toContain('delete_domain');
     expect(names).toContain('read_screen');

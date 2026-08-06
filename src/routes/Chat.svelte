@@ -7,6 +7,7 @@
   import { TOOL_SCHEMAS } from '../lib/gpt/tools';
   import { createDomains } from '../lib/domains';
   import { getFs } from '../lib/fs';
+  import { getDb } from '../lib/db';
   import { loadProfile, profile, saveProfile } from '../stores/profile';
 
   let input = '';
@@ -50,7 +51,8 @@
     try {
       const openai = await getOpenAIClient();
       const fs = await getFs();
-      const domains = createDomains(fs);
+      const db = await getDb();
+      const domains = createDomains(fs, db);
       const registry = createRegistry({
         domains,
         getProfile: async () => $profile,

@@ -1,8 +1,28 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { createRegistry, type RegistryDeps } from '../../src/lib/gpt/registry';
 import { createFs, type FsBackend } from '../../src/lib/fs';
+import { createDb, type DbBackend } from '../../src/lib/db';
 import { createDomains } from '../../src/lib/domains';
 import type { UserProfile } from '../../src/stores/profile';
+
+// domain_meta 테이블만 흉내내는 인메모리 fake (tests/domains.test.ts 와 동일한 패턴)
+function memDbBackend(): DbBackend {
+  const rows = new Map<string, any>();
+  return {
+    async execute(sql, params = []) {
+      if (sql.includes('INSERT INTO domain_meta')) {
+        const [name, display_name, icon, created_at, updated_at] = params;
+        rows.set(name, { name, display_name, icon, created_at, updated_at });
+      } else if (sql.includes('DELETE FROM domain_meta')) {
+        rows.delete(params[0]);
+      }
+    },
+    async query(sql) {
+      if (sql.includes('domain_meta')) return { rows: [...rows.values()] };
+      return { rows: [] };
+    },
+  };
+}
 
 function memFsBackend(): FsBackend {
   const files = new Map<string, string>();
@@ -47,7 +67,8 @@ function memFsBackend(): FsBackend {
 
 function makeDeps(): RegistryDeps & { _profile: UserProfile } {
   const fs = createFs(memFsBackend());
-  const domains = createDomains(fs);
+  const db = createDb(memDbBackend());
+  const domains = createDomains(fs, db);
   const _profile: UserProfile = {};
   return {
     domains,
@@ -98,6 +119,15 @@ describe('tool registry', () => {
     await registry.invoke('revert_screen', { domain: 'memo', steps: 1 });
     const after = (await registry.invoke('read_screen', { domain: 'memo' })).result.html;
     expect(after).toBe(before);
+  });
+
+  it('patch_screen + read_screen roundtrip', async () => {
+    await registry.invoke('create_domain', { name: 'memo', displayName: '메모' });
+    await registry.invoke('update_screen', { domain: 'memo', html: '<h1>hi</h1>' });
+    const p = await registry.invoke('patch_screen', { domain: 'memo', file: 'html', search: 'hi', replace: 'bye' });
+    expect(p.ok).toBe(true);
+    const r = await registry.invoke('read_screen', { domain: 'memo' });
+    expect(r.result.html).toBe('<h1>bye</h1>');
   });
 
   it('delete_domain removes the domain', async () => {

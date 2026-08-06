@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte';
   import { getFs } from '../lib/fs';
+  import { getDb } from '../lib/db';
   import { createDomains } from '../lib/domains';
   import { inlineAssets } from '../lib/domainRenderer';
   import { createMessageHost } from '../lib/messaging';
@@ -18,7 +19,8 @@
     srcdoc = '';
     try {
       const fs = await getFs();
-      const domains = createDomains(fs);
+      const db = await getDb();
+      const domains = createDomains(fs, db);
       const files = await domains.read(params.name);
       srcdoc = inlineAssets(files);
     } catch (e: any) {
@@ -29,7 +31,8 @@
   async function revert() {
     try {
       const fs = await getFs();
-      const domains = createDomains(fs);
+      const db = await getDb();
+      const domains = createDomains(fs, db);
       await domains.revert(params.name, 1);
       await load();
     } catch (e: any) {
@@ -41,7 +44,8 @@
     if (!confirm(`도메인 "${params.name}" 을 삭제할까요?`)) return;
     try {
       const fs = await getFs();
-      const domains = createDomains(fs);
+      const db = await getDb();
+      const domains = createDomains(fs, db);
       await domains.delete(params.name);
       await refreshDomains();
       history.back();

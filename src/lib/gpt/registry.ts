@@ -20,6 +20,7 @@ export function createRegistry(deps: RegistryDeps) {
     list_domains: () => deps.domains.list(),
     read_screen: ({ domain }) => deps.domains.read(domain),
     update_screen: ({ domain, html, css, js }) => deps.domains.update(domain, { html, css, js }),
+    patch_screen: ({ domain, file, search, replace }) => deps.domains.patch(domain, file, search, replace),
     revert_screen: ({ domain, steps }) => deps.domains.revert(domain, steps ?? 1),
     delete_domain: ({ domain }) => deps.domains.delete(domain),
     get_user_profile: () => deps.getProfile(),

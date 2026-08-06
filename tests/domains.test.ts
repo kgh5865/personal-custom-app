@@ -1,6 +1,26 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { createDomains, type Domains } from '../src/lib/domains';
 import { createFs, type FsBackend } from '../src/lib/fs';
+import { createDb, type Db, type DbBackend } from '../src/lib/db';
+
+// domain_meta 테이블만 흉내내는 인메모리 fake. domains.ts 가 실제로 던지는 SQL 문 3종류만 이해하면 된다.
+function memDbBackend(): DbBackend {
+  const rows = new Map<string, any>();
+  return {
+    async execute(sql, params = []) {
+      if (sql.includes('INSERT INTO domain_meta')) {
+        const [name, display_name, icon, created_at, updated_at] = params;
+        rows.set(name, { name, display_name, icon, created_at, updated_at });
+      } else if (sql.includes('DELETE FROM domain_meta')) {
+        rows.delete(params[0]);
+      }
+    },
+    async query(sql) {
+      if (sql.includes('domain_meta')) return { rows: [...rows.values()] };
+      return { rows: [] };
+    },
+  };
+}
 
 function memFsBackend(): FsBackend {
   const files = new Map<string, string>();
@@ -51,10 +71,12 @@ function memFsBackend(): FsBackend {
 
 describe('domains', () => {
   let fs: ReturnType<typeof createFs>;
+  let db: Db;
   let domains: Domains;
   beforeEach(() => {
     fs = createFs(memFsBackend());
-    domains = createDomains(fs);
+    db = createDb(memDbBackend());
+    domains = createDomains(fs, db);
   });
 
   it('create writes meta + default index.html/style.css/script.js', async () => {
@@ -138,11 +160,23 @@ describe('domains', () => {
     await expect(domains.revert('memo', 1)).rejects.toThrow(/history/i);
   });
 
-  it('delete removes the domain entirely', async () => {
+  it('delete moves the domain to trash instead of removing it entirely', async () => {
     await domains.create('memo', '메모');
     await domains.delete('memo');
     expect((await domains.list()).length).toBe(0);
     expect(await fs.exists('/domains/memo/meta.json')).toBe(false);
+    const trashNames = await fs.list('/domains/.trash');
+    expect(trashNames.length).toBe(1);
+    expect(trashNames[0].startsWith('memo-')).toBe(true);
+    expect(await fs.exists(`/domains/.trash/${trashNames[0]}/meta.json`)).toBe(true);
+  });
+
+  it('.trash is not treated as a domain by list()', async () => {
+    await domains.create('memo', '메모');
+    await domains.delete('memo');
+    await domains.create('todo', '할일');
+    const list = await domains.list();
+    expect(list.map(d => d.name)).toEqual(['todo']);
   });
 
   it('history returns timestamps in descending order (newest first)', async () => {
@@ -176,5 +210,44 @@ describe('domains', () => {
 
   it('read throws when domain does not exist', async () => {
     await expect(domains.read('nope')).rejects.toThrow(/domain not found/);
+  });
+
+  it('patch replaces a unique search string', async () => {
+    await domains.create('memo', '메모');
+    await domains.update('memo', { html: '<h1>hello</h1>' });
+    await domains.patch('memo', 'html', 'hello', 'world');
+    expect((await domains.read('memo')).html).toBe('<h1>world</h1>');
+  });
+
+  it('patch throws when search string is not found', async () => {
+    await domains.create('memo', '메모');
+    await expect(domains.patch('memo', 'html', 'nope-not-there', 'x')).rejects.toThrow(/찾지 못했습니다/);
+  });
+
+  it('patch throws when search string appears more than once', async () => {
+    await domains.create('memo', '메모');
+    await domains.update('memo', { html: 'dup dup' });
+    await expect(domains.patch('memo', 'html', 'dup', 'x')).rejects.toThrow(/모호/);
+  });
+
+  it('patch backs up the previous version before writing', async () => {
+    await domains.create('memo', '메모');
+    await domains.update('memo', { html: '<h1>hello</h1>' });
+    await domains.patch('memo', 'html', 'hello', 'world');
+    const hist = await domains.history('memo');
+    const backed = await fs.read(`/domains/memo/history/${hist[0]}/index.html`);
+    expect(backed).toBe('<h1>hello</h1>');
+  });
+
+  it('list self-heals from meta.json when the domain_meta table is empty', async () => {
+    await domains.create('memo', '메모');
+    // 테이블이 유실된 상황을 흉내낸다 (파일은 그대로, DB 만 비움)
+    const emptyDb = createDb(memDbBackend());
+    const healed = createDomains(fs, emptyDb);
+    const list = await healed.list();
+    expect(list.map(d => d.name)).toEqual(['memo']);
+    // 재구축 후에는 다시 조회해도 테이블에서 바로 읽힌다
+    const list2 = await healed.list();
+    expect(list2.map(d => d.name)).toEqual(['memo']);
   });
 });

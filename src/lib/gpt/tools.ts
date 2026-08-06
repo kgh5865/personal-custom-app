@@ -42,6 +42,20 @@ const TOOL_DEFS = [
     },
   },
   {
+    name: 'patch_screen',
+    description: 'Patch one file (html/css/js) of a domain by replacing a unique search string with a replacement. The search string must appear exactly once — use this instead of update_screen for small edits, it uses far fewer tokens than sending the whole file.',
+    parameters: {
+      type: 'object',
+      properties: {
+        domain: { type: 'string' },
+        file: { type: 'string', enum: ['html', 'css', 'js'] },
+        search: { type: 'string', description: 'Exact substring to find (must be unique in the file)' },
+        replace: { type: 'string', description: 'Text to replace it with' },
+      },
+      required: ['domain', 'file', 'search', 'replace'],
+    },
+  },
+  {
     name: 'revert_screen',
     description: 'Revert a domain screen to a previous version.',
     parameters: {
@@ -52,7 +66,7 @@ const TOOL_DEFS = [
   },
   {
     name: 'delete_domain',
-    description: 'Permanently delete a domain.',
+    description: 'Remove a domain — moves it to the trash, does not permanently delete it.',
     parameters: {
       type: 'object',
       properties: { domain: { type: 'string' } },
