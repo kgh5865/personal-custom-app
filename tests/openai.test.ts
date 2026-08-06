@@ -1,5 +1,8 @@
 import { describe, it, expect, vi } from 'vitest';
 import { createOpenAIClient, type OpenAIDeps } from '../src/lib/openai';
+import {
+  MODEL_OPTIONS, OAUTH_MODELS, OAUTH_DEFAULT_MODEL, DEFAULT_SETTINGS, resolveModelForAuth,
+} from '../src/lib/ai-settings';
 
 function makeDeps(fetchImpl: any, authHeader: string = 'Bearer testtoken', overrides: Partial<OpenAIDeps> = {}): OpenAIDeps {
   return {
@@ -151,5 +154,176 @@ describe('openai client', () => {
     const client = createOpenAIClient(makeDeps(fetchMock));
     const r = await client.respond({ input: [], tools: [] });
     expect(r.raw).toEqual(raw);
+  });
+});
+
+describe('openai client — Responses API mode', () => {
+  // Codex 는 SSE 로 응답. 최종 output 은 response.completed 이벤트에 담긴다.
+  function respResp(output: any[], extra: any = {}) {
+    const body = `event: response.completed\ndata: ${JSON.stringify({ type: 'response.completed', response: { id: 'resp_1', output, ...extra } })}\n\ndata: [DONE]\n\n`;
+    return new Response(body, { status: 200, headers: { 'Content-Type': 'text/event-stream' } });
+  }
+
+  it('sends body in Responses API shape (input/instructions/tools flat)', async () => {
+    const fetchMock = vi.fn(async () => respResp([
+      { type: 'message', role: 'assistant', content: [{ type: 'output_text', text: 'hi' }] },
+    ]));
+    const client = createOpenAIClient({
+      fetch: fetchMock,
+      getAuthHeader: async () => 'Bearer jwt',
+      getApiStyle: async () => 'responses',
+      getModel: async () => 'gpt-5',
+    });
+    await client.respond({
+      input: [
+        { role: 'system', content: 'be nice' },
+        { role: 'user', content: '안녕' },
+      ],
+      tools: [{ type: 'function', function: { name: 'x', description: 'd', parameters: { type: 'object', properties: {} } } }],
+    });
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(url).toBe('https://chatgpt.com/backend-api/codex/responses');
+    const body = JSON.parse(init.body as string);
+    expect(body.model).toBe('gpt-5');
+    expect(body.instructions).toBe('be nice');
+    expect(body.input).toEqual([{ role: 'user', content: [{ type: 'input_text', text: '안녕' }] }]);
+    expect(body.tools).toEqual([{ type: 'function', name: 'x', description: 'd', parameters: { type: 'object', properties: {} } }]);
+    expect(body.store).toBe(false);
+    expect(body.tool_choice).toBe('auto');
+    expect(body.messages).toBeUndefined();
+  });
+
+  // 실제 Codex backend 는 response.completed 의 output 을 빈 배열로 보내고,
+  // 완성된 항목을 response.output_item.done 으로 하나씩 흘린다. (실기기 캡처 기준)
+  function codexResp(items: any[]) {
+    const frames = items.map((item, i) =>
+      `event: response.output_item.done\ndata: ${JSON.stringify({ type: 'response.output_item.done', output_index: i, item })}\n\n`
+    ).join('');
+    const done = `event: response.completed\ndata: ${JSON.stringify({ type: 'response.completed', response: { id: 'resp_1', status: 'completed', output: [] } })}\n\ndata: [DONE]\n\n`;
+    return new Response(frames + done, { status: 200, headers: { 'Content-Type': 'text/event-stream' } });
+  }
+
+  it('reads output from output_item.done when completed.output is empty', async () => {
+    const fetchMock = vi.fn(async () => codexResp([
+      { id: 'msg_1', type: 'message', role: 'assistant', status: 'completed',
+        content: [{ type: 'output_text', text: '안녕하세요' }] },
+    ]));
+    const client = createOpenAIClient({
+      fetch: fetchMock, getAuthHeader: async () => 'Bearer x', getApiStyle: async () => 'responses',
+    });
+    const r = await client.respond({ input: [], tools: [] });
+    expect(r.text).toBe('안녕하세요');
+  });
+
+  it('reads tool calls from output_item.done when completed.output is empty', async () => {
+    const fetchMock = vi.fn(async () => codexResp([
+      { id: 'fc_1', type: 'function_call', status: 'completed', call_id: 'call_abc',
+        name: 'create_domain', arguments: '{"name":"memo","displayName":"메모","icon":"📝"}' },
+    ]));
+    const client = createOpenAIClient({
+      fetch: fetchMock, getAuthHeader: async () => 'Bearer x', getApiStyle: async () => 'responses',
+    });
+    const r = await client.respond({ input: [], tools: [] });
+    expect(r.toolCalls).toEqual([
+      { id: 'call_abc', name: 'create_domain', args: { name: 'memo', displayName: '메모', icon: '📝' } },
+    ]);
+  });
+
+  it('extracts text from output_text and tool calls from function_call', async () => {
+    const fetchMock = vi.fn(async () => respResp([
+      { type: 'message', role: 'assistant', content: [{ type: 'output_text', text: '만들게' }] },
+      { type: 'function_call', call_id: 'call_1', name: 'create_domain', arguments: '{"name":"memo","displayName":"메모"}' },
+    ]));
+    const client = createOpenAIClient({
+      fetch: fetchMock, getAuthHeader: async () => 'Bearer x', getApiStyle: async () => 'responses',
+    });
+    const r = await client.respond({ input: [], tools: [] });
+    expect(r.text).toBe('만들게');
+    expect(r.toolCalls).toEqual([{ id: 'call_1', name: 'create_domain', args: { name: 'memo', displayName: '메모' } }]);
+  });
+
+  it('converts assistant tool_calls + tool result messages into Responses format', async () => {
+    const fetchMock = vi.fn(async () => respResp([]));
+    const client = createOpenAIClient({
+      fetch: fetchMock, getAuthHeader: async () => 'Bearer x', getApiStyle: async () => 'responses',
+    });
+    await client.respond({
+      input: [
+        { role: 'user', content: 'go' },
+        { role: 'assistant', content: null, tool_calls: [
+          { id: 'call_1', type: 'function', function: { name: 'x', arguments: '{"a":1}' } },
+        ]},
+        { role: 'tool', tool_call_id: 'call_1', content: '{"ok":true}' },
+      ],
+      tools: [],
+    });
+    const body = JSON.parse(fetchMock.mock.calls[0][1].body as string);
+    expect(body.input).toEqual([
+      { role: 'user', content: [{ type: 'input_text', text: 'go' }] },
+      { type: 'function_call', call_id: 'call_1', name: 'x', arguments: '{"a":1}' },
+      { type: 'function_call_output', call_id: 'call_1', output: '{"ok":true}' },
+    ]);
+  });
+
+  it('adds reasoning.effort when model supports reasoning', async () => {
+    const fetchMock = vi.fn(async () => respResp([]));
+    const client = createOpenAIClient({
+      fetch: fetchMock, getAuthHeader: async () => 'Bearer x',
+      getApiStyle: async () => 'responses',
+      getModel: async () => 'gpt-5',
+      getReasoningEffort: async () => 'high',
+    });
+    await client.respond({ input: [], tools: [] });
+    const body = JSON.parse(fetchMock.mock.calls[0][1].body as string);
+    expect(body.reasoning).toEqual({ effort: 'high', summary: 'auto' });
+  });
+
+  it('omits reasoning for non-reasoning models', async () => {
+    const fetchMock = vi.fn(async () => respResp([]));
+    const client = createOpenAIClient({
+      fetch: fetchMock, getAuthHeader: async () => 'Bearer x',
+      getApiStyle: async () => 'responses',
+      getModel: async () => 'gpt-4o',
+      getReasoningEffort: async () => 'high',
+    });
+    await client.respond({ input: [], tools: [] });
+    const body = JSON.parse(fetchMock.mock.calls[0][1].body as string);
+    expect(body.reasoning).toBeUndefined();
+  });
+
+  it('never sends a Platform-API-only model to the Codex backend', async () => {
+    for (const m of MODEL_OPTIONS.filter(o => o.auth === 'apikey')) {
+      expect(resolveModelForAuth(m.id, true)).toBe(OAUTH_DEFAULT_MODEL);
+    }
+    expect(OAUTH_MODELS).toContain(DEFAULT_SETTINGS.model);
+    expect(OAUTH_MODELS).toContain(OAUTH_DEFAULT_MODEL);
+    // apikey 모드에서는 저장값을 그대로 존중
+    expect(resolveModelForAuth('gpt-4o', false)).toBe('gpt-4o');
+  });
+
+  // Codex backend 는 `version` 헤더로 클라이언트를 게이팅한다. 낮으면 모델 무관 400:
+  // "The '<model>' model requires a newer version of Codex."
+  it('sends a Codex client version the backend still accepts', async () => {
+    const fetchMock = vi.fn(async () => respResp([]));
+    const client = createOpenAIClient({
+      fetch: fetchMock, getAuthHeader: async () => 'Bearer x', getApiStyle: async () => 'responses',
+      getExtraHeaders: async () => ({ version: '0.146.1', 'User-Agent': 'codex_cli_rs/0.146.1' }),
+    });
+    await client.respond({ input: [], tools: [] });
+    const [, init] = fetchMock.mock.calls[0];
+    const [maj, min] = String(init.headers.version).split('.').map(Number);
+    expect(maj > 0 || min >= 146).toBe(true);
+  });
+
+  it('adds reasoning_effort to chat body for reasoning models', async () => {
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({ choices: [{ message: { content: '' } }] }), { status: 200 }));
+    const client = createOpenAIClient({
+      fetch: fetchMock, getAuthHeader: async () => 'Bearer x',
+      getModel: async () => 'gpt-5',
+      getReasoningEffort: async () => 'low',
+    });
+    await client.respond({ input: [], tools: [] });
+    const body = JSON.parse(fetchMock.mock.calls[0][1].body as string);
+    expect(body.reasoning_effort).toBe('low');
   });
 });
