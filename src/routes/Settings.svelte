@@ -10,6 +10,10 @@
     APP_VERSION, checkForUpdate, downloadAndInstall,
     type UpdateCheck, type DownloadProgress,
   } from '../lib/update';
+  import {
+    getAiSettings, setAiSettings, MODEL_OPTIONS, supportsReasoning,
+    type AiSettings, type ReasoningEffort,
+  } from '../lib/ai-settings';
 
   type Provider = 'chatgpt' | 'apikey' | 'openclaw';
 
@@ -17,9 +21,9 @@
   let mode: AuthMode | null = null;
   let selected: Provider = 'chatgpt';
   let apiKey = '';
-  let gatewayURL = 'http://home-server-1:18789';
-  let gatewayToken = '';
-  let gatewayModel = 'openclaw/default';
+  let gatewayURL = import.meta.env.VITE_OPENCLAW_URL ?? '';
+  let gatewayToken = import.meta.env.VITE_OPENCLAW_TOKEN ?? '';
+  let gatewayModel = import.meta.env.VITE_OPENCLAW_MODEL ?? 'openclaw/default';
   let pastedCode = '';
   let awaitingCode = false;
   let busy = false;
@@ -70,8 +74,30 @@
     return (bytes / 1024 / 1024).toFixed(1) + ' MB';
   }
 
+  // ─── AI 모델 설정 ─────────────────────────────────────────────
+  let aiSettings: AiSettings | null = null;
+
+  async function refreshAi() {
+    aiSettings = await getAiSettings();
+  }
+
+  async function chooseModel(id: string) {
+    aiSettings = await setAiSettings({ model: id });
+  }
+
+  async function chooseEffort(effort: ReasoningEffort) {
+    aiSettings = await setAiSettings({ reasoningEffort: effort });
+  }
+
+  const EFFORT_LABELS: { id: ReasoningEffort; label: string; hint: string }[] = [
+    { id: 'low',    label: '낮음', hint: '빠르고 저렴' },
+    { id: 'medium', label: '중간', hint: '균형' },
+    { id: 'high',   label: '높음', hint: '깊게 생각 · 느림' },
+  ];
+
   onMount(() => {
     refresh();
+    refreshAi();
     // 앱 실행 시 조용히 업데이트 확인 (에러는 삼킴)
     if (isAndroid) runUpdateCheck(true);
   });
@@ -338,6 +364,87 @@
       <div class="text-toss-error text-[13px] font-medium">{error}</div>
     {/if}
   </section>
+
+  <!-- ─── AI 모델 ─────────────────────────────────────────────────────── -->
+  {#if aiSettings}
+    {@const isGateway = mode?.mode === 'gateway'}
+    {@const canReason = supportsReasoning(aiSettings.model)}
+    <!-- ChatGPT 계정 로그인은 Codex backend 가 받아주는 모델만 고를 수 있다 -->
+    {@const models = mode?.mode === 'oauth'
+      ? MODEL_OPTIONS.filter(m => m.auth === 'oauth')
+      : MODEL_OPTIONS}
+    <section class="bg-toss-surface rounded-toss-card p-5 space-y-4">
+      <div class="flex items-center gap-3">
+        <div class="w-10 h-10 rounded-toss-chip bg-toss-blue-light flex items-center justify-center">
+          <span class="msym text-toss-blue" style="font-size: 22px;">tune</span>
+        </div>
+        <div class="flex-1 min-w-0">
+          <h2 class="font-bold text-[16px] text-toss-text-strong tracking-tight">AI 모델</h2>
+          <p class="text-[13px] text-toss-text-weak font-medium truncate mt-0.5">
+            {#if isGateway}
+              게이트웨이 사용 중 — 서버 설정 모델 고정
+            {:else}
+              현재: {aiSettings.model}{canReason ? ` · 추론 ${aiSettings.reasoningEffort}` : ''}
+            {/if}
+          </p>
+        </div>
+      </div>
+
+      {#if !isGateway}
+        <div class="space-y-2">
+          <p class="text-[12px] text-toss-text-weak font-semibold px-1">모델</p>
+          <div class="space-y-1.5">
+            {#each models as opt}
+              <button
+                on:click={() => chooseModel(opt.id)}
+                class="md-ripple w-full flex items-center justify-between gap-3 px-4 h-[54px]
+                       rounded-toss-btn text-left transition
+                       {aiSettings.model === opt.id
+                         ? 'bg-toss-blue-light ring-2 ring-toss-blue'
+                         : 'bg-toss-bg-soft hover:bg-toss-line'}"
+              >
+                <div class="min-w-0">
+                  <div class="font-bold text-[15px] text-toss-text-strong">{opt.label}</div>
+                  {#if opt.note}
+                    <div class="text-[11px] text-toss-text-weak font-medium truncate">{opt.note}</div>
+                  {/if}
+                </div>
+                {#if aiSettings.model === opt.id}
+                  <span class="msym text-toss-blue" style="font-size: 22px;">check_circle</span>
+                {/if}
+              </button>
+            {/each}
+          </div>
+        </div>
+
+        {#if canReason}
+          <div class="space-y-2 pt-1">
+            <p class="text-[12px] text-toss-text-weak font-semibold px-1">추론 강도 (Reasoning)</p>
+            <div class="flex gap-2 bg-toss-bg-soft rounded-toss-btn p-1">
+              {#each EFFORT_LABELS as e}
+                <button
+                  on:click={() => chooseEffort(e.id)}
+                  class="flex-1 h-11 rounded-toss-btn font-bold text-[13px] transition
+                         {aiSettings.reasoningEffort === e.id
+                           ? 'bg-toss-surface text-toss-blue shadow-sm'
+                           : 'text-toss-text-weak'}"
+                >
+                  {e.label}
+                </button>
+              {/each}
+            </div>
+            <p class="text-[11px] text-toss-text-weak font-medium leading-snug px-1">
+              {EFFORT_LABELS.find(e => e.id === aiSettings.reasoningEffort)?.hint ?? ''}
+            </p>
+          </div>
+        {:else}
+          <p class="text-[11px] text-toss-text-weak font-medium leading-snug">
+            선택한 모델은 추론(Reasoning)을 지원하지 않아 강도 설정이 무시됩니다.
+          </p>
+        {/if}
+      {/if}
+    </section>
+  {/if}
 
   <!-- ─── 앱 업데이트 ────────────────────────────────────────────────────── -->
   <section class="bg-toss-surface rounded-toss-card p-5 space-y-4">

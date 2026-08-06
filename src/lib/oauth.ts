@@ -132,20 +132,30 @@ function buildProdAuthUrl(params: { challenge: string; state: string }): string 
 
 // ─── Auth mode (OAuth vs API-key) ───────────────────────────────────────────
 const MODE_KEY = 'auth_mode';
+// clearAuth 후에도 .env 게이트웨이 폴백이 다시 나타나는 것을 막는다.
+// 사용자가 명시적으로 다른 모드를 고르면 해제된다.
+const ENV_DISABLED_KEY = 'env_fallback_disabled';
 
 export type AuthMode =
   | { mode: 'oauth' }
   | { mode: 'apikey'; apiKey: string }
   | { mode: 'gateway'; baseURL: string; token: string; model: string };
 
+async function reenableEnvFallback(): Promise<void> {
+  const secure = await getSecureStore();
+  await secure.remove(ENV_DISABLED_KEY);
+}
+
 export async function setApiKeyMode(apiKey: string): Promise<void> {
   const secure = await getSecureStore();
   await secure.setObject(MODE_KEY, { mode: 'apikey', apiKey });
+  await reenableEnvFallback();
 }
 
 export async function setGatewayMode(baseURL: string, token: string, model: string): Promise<void> {
   const secure = await getSecureStore();
   await secure.setObject(MODE_KEY, { mode: 'gateway', baseURL, token, model });
+  await reenableEnvFallback();
 }
 
 function getEnvGatewayMode(): AuthMode | null {
@@ -161,18 +171,21 @@ export async function getAuthMode(): Promise<AuthMode | null> {
   const explicit = await secure.getObject<AuthMode>(MODE_KEY);
   if (explicit && explicit.mode === 'apikey' && explicit.apiKey) return explicit;
   if (explicit && explicit.mode === 'gateway' && explicit.baseURL && explicit.token) return explicit;
-  // 사용자 저장값이 없으면 빌드타임 .env 게이트웨이 폴백을 사용
-  const envGw = getEnvGatewayMode();
-  if (envGw) return envGw;
   const oauth = await getOAuth();
   const t = await oauth.currentTokens();
   if (t) return { mode: 'oauth' };
+  // 사용자가 clearAuth 로 명시적으로 끊었으면 .env 폴백을 무시
+  const envDisabled = await secure.getObject<boolean>(ENV_DISABLED_KEY);
+  if (envDisabled) return null;
+  const envGw = getEnvGatewayMode();
+  if (envGw) return envGw;
   return null;
 }
 
 export async function clearAuth(): Promise<void> {
   const secure = await getSecureStore();
   await secure.remove(MODE_KEY);
+  await secure.setObject(ENV_DISABLED_KEY, true);
   const oauth = await getOAuth();
   await oauth.logout();
 }
