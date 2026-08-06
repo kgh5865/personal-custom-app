@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Android 11 이하(API < 31) 자동 백업 규칙.
+
+  SecureStorage.xml 은 EncryptedSharedPreferences 의 암호문이고, 복호화 키는
+  Android Keystore 안에 있어 기기 밖으로 나가지 않는다. 따라서 이 파일이 클라우드로
+  백업돼 다른 기기에 복원되면 절대 복호화되지 않는 쓰레기가 된다.
+  백업에서 제외해 복원 실패 대신 "재로그인"으로 처리한다.
+-->
+<full-backup-content>
+    <exclude domain="sharedpref" path="SecureStorage.xml" />
+</full-backup-content>

@@ -1,5 +1,7 @@
 ext {
-    minSdkVersion = 22
+    // 23 (Android 6). EncryptedSharedPreferences / MasterKey 가 API 23+ 를 요구한다.
+    // 22 로 두면 API 22 기기에서 시크릿 저장소 초기화가 런타임에 터진다.
+    minSdkVersion = 23
     compileSdkVersion = 34
     targetSdkVersion = 34
     androidxActivityVersion = '1.8.0'

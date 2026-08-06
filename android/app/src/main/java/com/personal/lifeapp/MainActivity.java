@@ -8,6 +8,7 @@ public class MainActivity extends BridgeActivity {
     public void onCreate(Bundle savedInstanceState) {
         registerPlugin(LoopbackServerPlugin.class);
         registerPlugin(ApkInstallerPlugin.class);
+        registerPlugin(SecureStoragePlugin.class);
         super.onCreate(savedInstanceState);
     }
 }
