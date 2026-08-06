@@ -91,6 +91,9 @@ const TOOL_DEFS = [
 
 export type ToolName = (typeof TOOL_DEFS)[number]['name'];
 
+// registry.ts 의 인자 검증이 이 스키마를 단일 출처로 참조한다
+export { TOOL_DEFS };
+
 export const TOOL_SCHEMAS = TOOL_DEFS.map(d => ({
   type: 'function' as const,
   function: d,
