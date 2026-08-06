@@ -55,10 +55,14 @@ function memFsBackend(): FsBackend {
     async copyFile(s, d) {
       const v = files.get(s);
       if (v == null) throw new Error('ENOENT');
-      files.set(d, v);
-      // register parent dir so exists() reflects what real fs would
+      // 실제 Capacitor Filesystem.copy 는 대상 디렉터리를 만들어주지 않는다.
+      // 여기서 관대하게 굴면 기기에서만 터지는 버그를 테스트가 놓친다
+      // (실제로 restoreFromTrash 가 이 때문에 통과했다).
       const parent = d.substring(0, d.lastIndexOf('/'));
-      if (parent) dirs.add(parent);
+      if (parent && !dirs.has(parent)) {
+        throw new Error(`ENOENT: 대상 디렉터리가 없습니다: ${parent}`);
+      }
+      files.set(d, v);
     },
     async remove(p) {
       files.delete(p);
@@ -249,5 +253,67 @@ describe('domains', () => {
     // 재구축 후에는 다시 조회해도 테이블에서 바로 읽힌다
     const list2 = await healed.list();
     expect(list2.map(d => d.name)).toEqual(['memo']);
+  });
+
+  it('listTrash finds a deleted domain, restoreFromTrash brings it back to list()', async () => {
+    await domains.create('memo', '메모', '📝');
+    await domains.delete('memo');
+    const trash = await domains.listTrash();
+    expect(trash.length).toBe(1);
+    expect(trash[0].name).toBe('memo');
+    expect(trash[0].displayName).toBe('메모');
+    expect(trash[0].icon).toBe('📝');
+
+    await domains.restoreFromTrash(trash[0].folder);
+    const list = await domains.list();
+    expect(list.map(d => d.name)).toEqual(['memo']);
+    expect(await fs.exists(`/domains/.trash/${trash[0].folder}`)).toBe(false);
+  });
+
+  it('restoreFromTrash renames to <name>-restored on name collision instead of overwriting', async () => {
+    await domains.create('memo', '메모 원본');
+    await domains.delete('memo');
+    await domains.create('memo', '메모 새것'); // 같은 이름으로 재생성
+    const trash = await domains.listTrash();
+
+    await domains.restoreFromTrash(trash[0].folder);
+
+    const list = await domains.list();
+    expect(list.map(d => d.name).sort()).toEqual(['memo', 'memo-restored']);
+    // 기존 것은 그대로
+    expect((await domains.read('memo')).html).not.toBe(undefined);
+    const restoredMeta = JSON.parse(await fs.read('/domains/memo-restored/meta.json'));
+    expect(restoredMeta.name).toBe('memo-restored');
+    expect(restoredMeta.displayName).toBe('메모 원본');
+    const existingMeta = JSON.parse(await fs.read('/domains/memo/meta.json'));
+    expect(existingMeta.displayName).toBe('메모 새것');
+  });
+
+  it('restoreFromTrash brings back history snapshots', async () => {
+    await domains.create('memo', '메모');
+    await domains.update('memo', { html: '<p>v2</p>' });
+    await domains.delete('memo');
+    const trash = await domains.listTrash();
+    await domains.restoreFromTrash(trash[0].folder);
+    const hist = await domains.history('memo');
+    expect(hist.length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('purgeTrash(folder) removes only that entry; purgeTrash() with no args empties trash', async () => {
+    await domains.create('memo', '메모');
+    await domains.delete('memo');
+    await domains.create('todo', '할일');
+    await domains.delete('todo');
+    let trash = await domains.listTrash();
+    expect(trash.length).toBe(2);
+
+    const memoFolder = trash.find(t => t.name === 'memo')!.folder;
+    await domains.purgeTrash(memoFolder);
+    trash = await domains.listTrash();
+    expect(trash.map(t => t.name)).toEqual(['todo']);
+
+    await domains.purgeTrash();
+    trash = await domains.listTrash();
+    expect(trash.length).toBe(0);
   });
 });

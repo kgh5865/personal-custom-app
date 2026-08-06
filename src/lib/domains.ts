@@ -26,6 +26,14 @@ function migrateMeta(raw: any, name: string): DomainMeta {
   };
 }
 
+export interface TrashEntry {
+  folder: string;
+  name: string;
+  displayName: string;
+  icon?: string;
+  deletedAt: number;
+}
+
 export interface DomainFiles {
   html: string;
   css: string;
@@ -271,6 +279,98 @@ export function createDomains(fs: Fs, db: Db) {
       if (sorted.length > HISTORY_LIMIT) {
         const drop = sorted.slice(0, sorted.length - HISTORY_LIMIT);
         for (const d of drop) await fs.remove(`${ROOT}/.trash/${d.e}`);
+      }
+    },
+
+    async listTrash(): Promise<TrashEntry[]> {
+      const trashDir = `${ROOT}/.trash`;
+      const folders = await fs.list(trashDir).catch(() => [] as string[]);
+      const out: TrashEntry[] = [];
+      for (const folder of folders) {
+        const idx = folder.lastIndexOf('-');
+        const ts = idx >= 0 ? Number(folder.slice(idx + 1)) : NaN;
+        const name = !Number.isNaN(ts) ? folder.slice(0, idx) : folder;
+        const deletedAt = Number.isNaN(ts) ? 0 : ts;
+        let displayName = name;
+        let icon: string | undefined;
+        const metaPath = `${trashDir}/${folder}/meta.json`;
+        if (await fs.exists(metaPath)) {
+          const raw = JSON.parse(await fs.read(metaPath));
+          displayName = typeof raw?.displayName === 'string' ? raw.displayName : name;
+          icon = typeof raw?.icon === 'string' ? raw.icon : undefined;
+        }
+        out.push({ folder, name, displayName, icon, deletedAt });
+      }
+      return out.sort((a, b) => b.deletedAt - a.deletedAt);
+    },
+
+    async restoreFromTrash(folder: string) {
+      const trashBase = `${ROOT}/.trash/${folder}`;
+      if (!(await fs.exists(trashBase))) {
+        throw new Error(`trash entry not found: ${folder}`);
+      }
+      const idx = folder.lastIndexOf('-');
+      const origName = idx >= 0 ? folder.slice(0, idx) : folder;
+
+      // 이름 충돌 시 <name>-restored, <name>-restored-2 ... 순으로 빈 이름을 찾는다
+      let name = origName;
+      if (await fs.exists(paths(name).base)) {
+        name = `${origName}-restored`;
+        let n = 2;
+        while (await fs.exists(paths(name).base)) {
+          name = `${origName}-restored-${n}`;
+          n++;
+        }
+      }
+
+      const p = paths(name);
+      // fs.copy 는 Capacitor Filesystem.copy 직결이라 대상 디렉터리를 만들어주지
+      // 않는다. 복원 대상 폴더는 아직 없으므로 먼저 만들어야 한다 (backup() 과 동일).
+      // fs.copy 는 Capacitor Filesystem.copy 직결이라 대상 디렉터리를 만들어주지
+      // 않는다. 복원 대상 폴더는 아직 없으므로 먼저 만들어야 한다 (backup() 과 동일).
+      await fs.mkdir(p.base);
+      for (const file of ['index.html', 'style.css', 'script.js'] as const) {
+        const src = `${trashBase}/${file}`;
+        if (await fs.exists(src)) await fs.copy(src, `${p.base}/${file}`);
+      }
+
+      const metaPath = `${trashBase}/meta.json`;
+      const now = uniqueTs();
+      let meta: DomainMeta;
+      if (await fs.exists(metaPath)) {
+        meta = migrateMeta(JSON.parse(await fs.read(metaPath)), name);
+      } else {
+        meta = { schemaVersion: DOMAIN_META_VERSION, name, displayName: name, createdAt: now, updatedAt: now };
+      }
+      meta.name = name;
+      meta.updatedAt = now;
+      await fs.write(p.meta, JSON.stringify(meta, null, 2));
+
+      // history 스냅샷도 함께 되돌린다
+      const histSrc = `${trashBase}/history`;
+      const histEntries = await fs.list(histSrc).catch(() => [] as string[]);
+      if (histEntries.length > 0) {
+        await fs.mkdir(p.history);
+        for (const hts of histEntries) {
+          const srcDir = `${histSrc}/${hts}`;
+          const dstDir = `${p.history}/${hts}`;
+          await fs.mkdir(dstDir);
+          for (const file of ['index.html', 'style.css', 'script.js'] as const) {
+            const src = `${srcDir}/${file}`;
+            if (await fs.exists(src)) await fs.copy(src, `${dstDir}/${file}`);
+          }
+        }
+      }
+
+      await upsertMeta(meta);
+      await fs.remove(trashBase);
+    },
+
+    async purgeTrash(folder?: string) {
+      if (folder) {
+        await fs.remove(`${ROOT}/.trash/${folder}`);
+      } else {
+        await fs.remove(`${ROOT}/.trash`);
       }
     },
   };

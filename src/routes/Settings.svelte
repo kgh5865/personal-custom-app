@@ -14,6 +14,10 @@
     getAiSettings, setAiSettings, MODEL_OPTIONS, supportsReasoning,
     type AiSettings, type ReasoningEffort,
   } from '../lib/ai-settings';
+  import { getFs } from '../lib/fs';
+  import { getDb } from '../lib/db';
+  import { createDomains, type TrashEntry } from '../lib/domains';
+  import { refreshDomains } from '../stores/domains';
 
   type Provider = 'chatgpt' | 'apikey' | 'openclaw';
 
@@ -95,9 +99,63 @@
     { id: 'high',   label: '높음', hint: '깊게 생각 · 느림' },
   ];
 
+  // ─── 휴지통 ───────────────────────────────────────────────────
+  let trash: TrashEntry[] = [];
+  let trashBusy = false;
+
+  async function refreshTrash() {
+    const fs = await getFs();
+    const db = await getDb();
+    trash = await createDomains(fs, db).listTrash();
+  }
+
+  async function restoreTrashItem(folder: string) {
+    trashBusy = true;
+    try {
+      const fs = await getFs();
+      const db = await getDb();
+      await createDomains(fs, db).restoreFromTrash(folder);
+      await refreshTrash();
+      await refreshDomains();
+    } finally {
+      trashBusy = false;
+    }
+  }
+
+  async function purgeTrashItem(folder: string) {
+    if (!confirm('영구적으로 삭제할까요? 되돌릴 수 없습니다.')) return;
+    trashBusy = true;
+    try {
+      const fs = await getFs();
+      const db = await getDb();
+      await createDomains(fs, db).purgeTrash(folder);
+      await refreshTrash();
+    } finally {
+      trashBusy = false;
+    }
+  }
+
+  async function emptyTrash() {
+    if (!confirm('휴지통을 완전히 비울까요? 되돌릴 수 없습니다.')) return;
+    trashBusy = true;
+    try {
+      const fs = await getFs();
+      const db = await getDb();
+      await createDomains(fs, db).purgeTrash();
+      await refreshTrash();
+    } finally {
+      trashBusy = false;
+    }
+  }
+
+  function fmtDate(ts: number): string {
+    return new Date(ts).toLocaleString('ko-KR');
+  }
+
   onMount(() => {
     refresh();
     refreshAi();
+    refreshTrash();
     // 앱 실행 시 조용히 업데이트 확인 (에러는 삼킴)
     if (isAndroid) runUpdateCheck(true);
   });
@@ -434,7 +492,7 @@
               {/each}
             </div>
             <p class="text-[11px] text-toss-text-weak font-medium leading-snug px-1">
-              {EFFORT_LABELS.find(e => e.id === aiSettings.reasoningEffort)?.hint ?? ''}
+              {EFFORT_LABELS.find(e => e.id === aiSettings?.reasoningEffort)?.hint ?? ''}
             </p>
           </div>
         {:else}
@@ -519,6 +577,66 @@
 
     {#if updateError}
       <div class="text-toss-error text-[13px] font-medium">{updateError}</div>
+    {/if}
+  </section>
+
+  <!-- ─── 휴지통 ─────────────────────────────────────────────────────── -->
+  <section class="bg-toss-surface rounded-toss-card p-5 space-y-4">
+    <div class="flex items-center gap-3">
+      <div class="w-10 h-10 rounded-toss-chip bg-toss-blue-light flex items-center justify-center">
+        <span class="msym text-toss-blue" style="font-size: 22px;">delete</span>
+      </div>
+      <div class="flex-1 min-w-0">
+        <h2 class="font-bold text-[16px] text-toss-text-strong tracking-tight">휴지통</h2>
+        <p class="text-[13px] text-toss-text-weak font-medium truncate mt-0.5">
+          삭제한 화면 {trash.length}개
+        </p>
+      </div>
+      {#if trash.length > 0}
+        <button
+          on:click={emptyTrash}
+          disabled={trashBusy}
+          class="md-ripple bg-toss-bg-soft text-toss-error rounded-toss-btn h-9 px-3 font-bold text-[12px] disabled:opacity-50"
+        >
+          비우기
+        </button>
+      {/if}
+    </div>
+
+    {#if trash.length === 0}
+      <p class="text-[13px] text-toss-text-weak font-medium">휴지통이 비어 있습니다.</p>
+    {:else}
+      <div class="space-y-2">
+        {#each trash as item (item.folder)}
+          <div class="bg-toss-bg-soft rounded-toss-btn p-3 flex items-center gap-3">
+            {#if item.icon}
+              <span class="text-[20px]">{item.icon}</span>
+            {:else}
+              <span class="msym text-toss-text-weak" style="font-size: 20px;">widgets</span>
+            {/if}
+            <div class="flex-1 min-w-0">
+              <div class="font-bold text-[14px] text-toss-text-strong truncate">{item.displayName}</div>
+              <div class="text-[11px] text-toss-text-weak font-medium truncate">
+                {item.name} · {fmtDate(item.deletedAt)} 삭제
+              </div>
+            </div>
+            <button
+              on:click={() => restoreTrashItem(item.folder)}
+              disabled={trashBusy}
+              class="md-ripple bg-toss-blue-light text-toss-blue rounded-toss-btn h-9 px-3 font-bold text-[12px] disabled:opacity-50"
+            >
+              복원
+            </button>
+            <button
+              on:click={() => purgeTrashItem(item.folder)}
+              disabled={trashBusy}
+              class="md-ripple bg-toss-surface text-toss-error rounded-toss-btn h-9 px-3 font-bold text-[12px] disabled:opacity-50"
+            >
+              영구삭제
+            </button>
+          </div>
+        {/each}
+      </div>
     {/if}
   </section>
 </div>

@@ -210,7 +210,7 @@ describe('openai client — Responses API mode', () => {
   }
 
   it('sends body in Responses API shape (input/instructions/tools flat)', async () => {
-    const fetchMock = vi.fn(async () => respResp([
+    const fetchMock = vi.fn(async (_url: any, _init: any) => respResp([
       { type: 'message', role: 'assistant', content: [{ type: 'output_text', text: 'hi' }] },
     ]));
     const client = createOpenAIClient({
@@ -288,7 +288,7 @@ describe('openai client — Responses API mode', () => {
   });
 
   it('converts assistant tool_calls + tool result messages into Responses format', async () => {
-    const fetchMock = vi.fn(async () => respResp([]));
+    const fetchMock = vi.fn(async (_url: any, _init: any) => respResp([]));
     const client = createOpenAIClient({
       fetch: fetchMock, getAuthHeader: async () => 'Bearer x', getApiStyle: async () => 'responses',
     });
@@ -311,7 +311,7 @@ describe('openai client — Responses API mode', () => {
   });
 
   it('adds reasoning.effort when model supports reasoning', async () => {
-    const fetchMock = vi.fn(async () => respResp([]));
+    const fetchMock = vi.fn(async (_url: any, _init: any) => respResp([]));
     const client = createOpenAIClient({
       fetch: fetchMock, getAuthHeader: async () => 'Bearer x',
       getApiStyle: async () => 'responses',
@@ -324,7 +324,7 @@ describe('openai client — Responses API mode', () => {
   });
 
   it('omits reasoning for non-reasoning models', async () => {
-    const fetchMock = vi.fn(async () => respResp([]));
+    const fetchMock = vi.fn(async (_url: any, _init: any) => respResp([]));
     const client = createOpenAIClient({
       fetch: fetchMock, getAuthHeader: async () => 'Bearer x',
       getApiStyle: async () => 'responses',
@@ -349,7 +349,7 @@ describe('openai client — Responses API mode', () => {
   // Codex backend 는 `version` 헤더로 클라이언트를 게이팅한다. 낮으면 모델 무관 400:
   // "The '<model>' model requires a newer version of Codex."
   it('sends a Codex client version the backend still accepts', async () => {
-    const fetchMock = vi.fn(async () => respResp([]));
+    const fetchMock = vi.fn(async (_url: any, _init: any) => respResp([]));
     const client = createOpenAIClient({
       fetch: fetchMock, getAuthHeader: async () => 'Bearer x', getApiStyle: async () => 'responses',
       getExtraHeaders: async () => ({ version: '0.146.1', 'User-Agent': 'codex_cli_rs/0.146.1' }),
@@ -361,7 +361,7 @@ describe('openai client — Responses API mode', () => {
   });
 
   it('adds reasoning_effort to chat body for reasoning models', async () => {
-    const fetchMock = vi.fn(async () => new Response(JSON.stringify({ choices: [{ message: { content: '' } }] }), { status: 200 }));
+    const fetchMock = vi.fn(async (_url: any, _init: any) => new Response(JSON.stringify({ choices: [{ message: { content: '' } }] }), { status: 200 }));
     const client = createOpenAIClient({
       fetch: fetchMock, getAuthHeader: async () => 'Bearer x',
       getModel: async () => 'gpt-5',
