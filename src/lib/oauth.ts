@@ -38,6 +38,18 @@ export function createOAuth(deps: OAuthDeps) {
     return t;
   }
 
+  // refresh 를 실행하고 이전 값을 보존 병합한 뒤 저장까지 한다.
+  // 리프레시 응답에 account_id/id_token 이 없을 수 있으므로 이전 값 보존
+  async function doRefresh(cur: Tokens): Promise<Tokens> {
+    const refreshed = await deps.refreshTokens(cur.refresh);
+    const merged: Tokens = {
+      ...refreshed,
+      accountId: refreshed.accountId ?? cur.accountId,
+      idToken: refreshed.idToken ?? cur.idToken,
+    };
+    return persist(merged);
+  }
+
   return {
     async login(): Promise<Tokens> {
       const { verifier, challenge, state } = deps.pkce();
@@ -60,14 +72,15 @@ export function createOAuth(deps: OAuthDeps) {
       const cur = await deps.secure.getObject<Tokens>(KEY);
       if (!cur) throw new Error('not logged in');
       if (cur.expiresAt > Date.now() + REFRESH_LEEWAY_MS) return cur;
-      const refreshed = await deps.refreshTokens(cur.refresh);
-      // 리프레시 응답에 account_id/id_token 이 없을 수 있으므로 이전 값 보존
-      const merged: Tokens = {
-        ...refreshed,
-        accountId: refreshed.accountId ?? cur.accountId,
-        idToken: refreshed.idToken ?? cur.idToken,
-      };
-      return persist(merged);
+      return doRefresh(cur);
+    },
+
+    // getValidTokens 와 달리 expiresAt 을 보지 않고 무조건 refresh 를 시도한다.
+    // 서버가 401 을 준 경우(토큰 조기 폐기 등) 만료 전이라도 강제로 갱신할 때 쓴다.
+    async forceRefresh(): Promise<Tokens> {
+      const cur = await deps.secure.getObject<Tokens>(KEY);
+      if (!cur) throw new Error('not logged in');
+      return doRefresh(cur);
     },
   };
 }

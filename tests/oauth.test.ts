@@ -110,6 +110,24 @@ describe('oauth manager', () => {
     expect(await oauth.currentTokens()).toBeNull();
   });
 
+  it('forceRefresh calls refreshTokens even when not expired, and preserves accountId/idToken', async () => {
+    const deps = makeDeps();
+    const oauth = createOAuth(deps);
+    const logged = await oauth.login();
+    expect(logged.accountId).toBe('acct-1');
+    const t = await oauth.forceRefresh();
+    expect(deps.refreshTokens).toHaveBeenCalledWith('R:CODE123');
+    expect(t.access).toBe('A2:R:CODE123');
+    expect(t.accountId).toBe('acct-1');
+    expect(t.idToken).toBe('id.v-test');
+    expect(await oauth.currentTokens()).toEqual(t);
+  });
+
+  it('forceRefresh throws when not logged in', async () => {
+    const oauth = createOAuth(makeDeps());
+    await expect(oauth.forceRefresh()).rejects.toThrow(/not logged in/i);
+  });
+
   it('refreshed tokens are persisted', async () => {
     const deps = makeDeps({
       exchangeCode: vi.fn(async () => ({ access: 'old', refresh: 'r3', expiresAt: Date.now() - 1 })),

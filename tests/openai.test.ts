@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { createOpenAIClient, type OpenAIDeps } from '../src/lib/openai';
+import { createOpenAIClient, isAuthExpired, type OpenAIDeps } from '../src/lib/openai';
 import {
   MODEL_OPTIONS, OAUTH_MODELS, OAUTH_DEFAULT_MODEL, DEFAULT_SETTINGS, resolveModelForAuth,
 } from '../src/lib/ai-settings';
@@ -138,6 +138,51 @@ describe('openai client', () => {
     const fetchMock = vi.fn(async (_url: any, _init: any) => new Response('bad request', { status: 400 }));
     const client = createOpenAIClient(makeDeps(fetchMock));
     await expect(client.respond({ input: [], tools: [] })).rejects.toThrow(/400/);
+  });
+
+  it('retries once after onUnauthorized succeeds and uses refreshed auth header', async () => {
+    let authHeader = 'Bearer old';
+    const fetchMock = vi.fn(async (_url: any, init: any) => {
+      if (init.headers.Authorization === 'Bearer old') return new Response('unauthorized', { status: 401 });
+      return chatResp({ content: 'ok' });
+    });
+    const onUnauthorized = vi.fn(async () => { authHeader = 'Bearer new'; return true; });
+    const client = createOpenAIClient({
+      fetch: fetchMock,
+      getAuthHeader: async () => authHeader,
+      onUnauthorized,
+    });
+    const r = await client.respond({ input: [], tools: [] });
+    expect(r.text).toBe('ok');
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock.mock.calls[1][1].headers.Authorization).toBe('Bearer new');
+    expect(onUnauthorized).toHaveBeenCalledOnce();
+  });
+
+  it('does not retry when onUnauthorized returns false, and throws AuthExpiredError', async () => {
+    const fetchMock = vi.fn(async () => new Response('unauthorized', { status: 401 }));
+    const onUnauthorized = vi.fn(async () => false);
+    const client = createOpenAIClient(makeDeps(fetchMock, 'Bearer x', { onUnauthorized }));
+    const err = await client.respond({ input: [], tools: [] }).catch(e => e);
+    expect(fetchMock).toHaveBeenCalledOnce();
+    expect(isAuthExpired(err)).toBe(true);
+  });
+
+  it('stops after one retry if the retried request is also 401', async () => {
+    const fetchMock = vi.fn(async () => new Response('unauthorized', { status: 401 }));
+    const onUnauthorized = vi.fn(async () => true);
+    const client = createOpenAIClient(makeDeps(fetchMock, 'Bearer x', { onUnauthorized }));
+    const err = await client.respond({ input: [], tools: [] }).catch(e => e);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(isAuthExpired(err)).toBe(true);
+  });
+
+  it('throws AuthExpiredError on 401 with no onUnauthorized dep, without retrying', async () => {
+    const fetchMock = vi.fn(async () => new Response('unauthorized', { status: 401 }));
+    const client = createOpenAIClient(makeDeps(fetchMock));
+    const err = await client.respond({ input: [], tools: [] }).catch(e => e);
+    expect(fetchMock).toHaveBeenCalledOnce();
+    expect(isAuthExpired(err)).toBe(true);
   });
 
   it('returns empty text when message has no content', async () => {

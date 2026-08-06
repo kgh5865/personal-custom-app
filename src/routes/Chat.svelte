@@ -1,7 +1,8 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
+  import { onMount, onDestroy } from 'svelte';
+  import { link } from 'svelte-spa-router';
   import { messages, loadHistory, appendMessage } from '../stores/chat';
-  import { getOpenAIClient } from '../lib/openai';
+  import { getOpenAIClient, isAuthExpired } from '../lib/openai';
   import { createBridge } from '../lib/gpt/bridge';
   import { createRegistry } from '../lib/gpt/registry';
   import { TOOL_SCHEMAS } from '../lib/gpt/tools';
@@ -14,6 +15,11 @@
   let busy = false;
   let error = '';
   let scrollEl: HTMLDivElement;
+  // 실패한 요청의 사용자 메시지. 이 값은 이미 히스토리에 저장돼 있으므로
+  // 재시도할 때 다시 append 하면 안 된다 (중복 말풍선이 쌓인다).
+  let failedMessage = '';
+  // 로그인 만료는 재시도해도 소용없다. 재시도 대신 설정으로 보낸다.
+  let authExpired = false;
 
   function scrollToBottom() {
     if (scrollEl) scrollEl.scrollTop = scrollEl.scrollHeight;
@@ -28,13 +34,17 @@
     }
     // 히스토리 렌더 후 하단으로
     requestAnimationFrame(scrollToBottom);
-    // 키보드 열림/닫힘으로 뷰포트가 줄면 다시 하단으로
-    const vv = window.visualViewport;
-    if (vv) {
-      const onResize = () => requestAnimationFrame(scrollToBottom);
-      vv.addEventListener('resize', onResize);
-      return () => vv.removeEventListener('resize', onResize);
-    }
+  });
+
+  // 키보드 열림/닫힘으로 뷰포트가 줄면 다시 하단으로.
+  // async onMount 가 돌려준 cleanup 은 Svelte 가 무시하므로(반환값이 Promise 다)
+  // 등록/해제를 onMount 밖으로 빼야 리스너가 실제로 정리된다.
+  const onViewportResize = () => requestAnimationFrame(scrollToBottom);
+  onMount(() => {
+    window.visualViewport?.addEventListener('resize', onViewportResize);
+  });
+  onDestroy(() => {
+    window.visualViewport?.removeEventListener('resize', onViewportResize);
   });
 
   // 새 메시지/에러 도착 시 자동 스크롤
@@ -44,9 +54,20 @@
     if (!input.trim() || busy) return;
     const userMsg = input.trim();
     input = '';
+    await appendMessage({ role: 'user', content: userMsg });
+    await run(userMsg);
+  }
+
+  // 실패한 메시지를 다시 보낸다. 히스토리에는 이미 들어 있으므로 append 하지 않는다.
+  async function retry() {
+    if (busy || !failedMessage) return;
+    await run(failedMessage);
+  }
+
+  async function run(userMsg: string) {
     busy = true;
     error = '';
-    await appendMessage({ role: 'user', content: userMsg });
+    authExpired = false;
 
     try {
       const openai = await getOpenAIClient();
@@ -69,10 +90,13 @@
           '한국어로 자연스럽게 응답하세요.',
         maxToolIterations: 5,
       });
+      // 마지막 항목은 방금(또는 실패했던) 사용자 메시지이므로 제외한다.
+      // 재시도 때도 assistant 응답이 안 붙었으니 이 계산은 그대로 성립한다.
       const priorHistory = $messages.slice(0, -1);
       const r = await bridge.send(priorHistory, userMsg);
 
       await appendMessage({ role: 'assistant', content: r.text || '(빈 응답)' });
+      failedMessage = '';
 
       const touched = r.toolEvents.some((e) =>
         ['create_domain', 'delete_domain', 'update_screen', 'patch_screen'].includes(e.name)
@@ -83,6 +107,8 @@
       }
     } catch (e: any) {
       error = e?.message ?? String(e);
+      authExpired = isAuthExpired(e);
+      failedMessage = userMsg;
     } finally {
       busy = false;
     }
@@ -123,7 +149,29 @@
       </div>
     {/if}
     {#if error}
-      <div class="text-toss-error text-[13px] px-2 font-medium">{error}</div>
+      <div class="bg-toss-surface rounded-toss-card px-4 py-3 space-y-2.5">
+        <p class="text-toss-error text-[13px] font-medium break-words">{error}</p>
+        {#if authExpired}
+          <a
+            href="/settings"
+            use:link
+            class="md-ripple inline-flex items-center gap-1.5 h-9 px-3 rounded-toss-btn
+                   bg-toss-blue-light text-toss-blue font-bold text-[13px]"
+          >
+            <span class="msym" style="font-size: 18px;">login</span>
+            설정에서 다시 로그인
+          </a>
+        {:else if failedMessage && !busy}
+          <button
+            on:click={retry}
+            class="md-ripple flex items-center gap-1.5 h-9 px-3 rounded-toss-btn
+                   bg-toss-blue-light text-toss-blue font-bold text-[13px]"
+          >
+            <span class="msym" style="font-size: 18px;">refresh</span>
+            재시도
+          </button>
+        {/if}
+      </div>
     {/if}
   </div>
 

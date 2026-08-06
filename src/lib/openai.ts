@@ -11,6 +11,22 @@ export interface OpenAIDeps {
   getModel?: () => Promise<string>;
   getApiStyle?: () => Promise<ApiStyle>;
   getReasoningEffort?: () => Promise<ReasoningEffort | null>;
+  // 401 응답을 받았을 때 호출. true 면 토큰 갱신 성공으로 보고 1회 재시도한다.
+  onUnauthorized?: () => Promise<boolean>;
+}
+
+// 서버가 401 을 반환했고(선제 refresh 로도 막지 못한 경우) 재로그인이 필요할 때 던진다.
+// UI 는 isAuthExpired() 로 구분해서 재로그인 안내를 띄운다.
+export class AuthExpiredError extends Error {
+  readonly code = 'auth_expired';
+  constructor(message: string) {
+    super(message);
+    this.name = 'AuthExpiredError';
+  }
+}
+
+export function isAuthExpired(e: unknown): boolean {
+  return e instanceof AuthExpiredError;
 }
 
 export interface ResponsesInput {
@@ -53,9 +69,7 @@ export function createOpenAIClient(deps: OpenAIDeps) {
   return {
     async respond(req: ResponsesInput): Promise<ResponsesResult> {
       const style: ApiStyle = deps.getApiStyle ? await deps.getApiStyle() : 'chat';
-      const authHeader = await deps.getAuthHeader();
       const model = req.model ?? (deps.getModel ? await deps.getModel() : DEFAULT_MODEL);
-      const extra = deps.getExtraHeaders ? await deps.getExtraHeaders() : {};
       const effort = deps.getReasoningEffort ? await deps.getReasoningEffort() : null;
       const endpoint = deps.getEndpoint
         ? await deps.getEndpoint()
@@ -65,17 +79,31 @@ export function createOpenAIClient(deps: OpenAIDeps) {
         ? buildResponsesBody(req, model, effort)
         : buildChatBody(req, model, effort);
 
-      const r = await deps.fetch(endpoint, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: authHeader,
-          ...extra,
-        },
-        body: JSON.stringify(body),
-      });
+      const doFetch = async () => {
+        // 재시도 시 갱신된 토큰이 반영돼야 하므로 매번 새로 조회한다.
+        const authHeader = await deps.getAuthHeader();
+        const extra = deps.getExtraHeaders ? await deps.getExtraHeaders() : {};
+        return deps.fetch(endpoint, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: authHeader,
+            ...extra,
+          },
+          body: JSON.stringify(body),
+        });
+      };
+
+      let r = await doFetch();
+      if (r.status === 401 && deps.onUnauthorized) {
+        const refreshed = await deps.onUnauthorized();
+        if (refreshed) r = await doFetch();
+      }
       if (!r.ok) {
         const text = await r.text().catch(() => '');
+        if (r.status === 401) {
+          throw new AuthExpiredError('ChatGPT 로그인이 만료됐습니다. 설정에서 다시 로그인해 주세요.');
+        }
         throw new Error(`openai ${r.status}: ${truncate(text, 500)}`);
       }
       if (style === 'responses') {
@@ -352,6 +380,20 @@ export async function getOpenAIClient(): Promise<OpenAIClient> {
     getReasoningEffort: async () => {
       const s = await getAiSettings();
       return s.reasoningEffort ?? null;
+    },
+    onUnauthorized: async () => {
+      const mode = await getAuthMode();
+      // API Key/게이트웨이는 refresh 개념이 없다
+      if (mode?.mode !== 'oauth') return false;
+      const oauth = await getOAuth();
+      try {
+        await oauth.forceRefresh();
+        return true;
+      } catch {
+        // refresh 자체가 실패 — 토큰을 폐기하고 재로그인을 유도한다
+        await oauth.logout();
+        return false;
+      }
     },
   });
 }
