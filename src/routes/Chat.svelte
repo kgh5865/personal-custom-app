@@ -12,6 +12,11 @@
   let input = '';
   let busy = false;
   let error = '';
+  let scrollEl: HTMLDivElement;
+
+  function scrollToBottom() {
+    if (scrollEl) scrollEl.scrollTop = scrollEl.scrollHeight;
+  }
 
   onMount(async () => {
     try {
@@ -20,7 +25,19 @@
     } catch (e: any) {
       error = `초기화 실패: ${e?.message ?? e}`;
     }
+    // 히스토리 렌더 후 하단으로
+    requestAnimationFrame(scrollToBottom);
+    // 키보드 열림/닫힘으로 뷰포트가 줄면 다시 하단으로
+    const vv = window.visualViewport;
+    if (vv) {
+      const onResize = () => requestAnimationFrame(scrollToBottom);
+      vv.addEventListener('resize', onResize);
+      return () => vv.removeEventListener('resize', onResize);
+    }
   });
+
+  // 새 메시지/에러 도착 시 자동 스크롤
+  $: if ($messages || busy || error) requestAnimationFrame(scrollToBottom);
 
   async function send() {
     if (!input.trim() || busy) return;
@@ -82,7 +99,7 @@
     <h1 class="text-[26px] font-extrabold text-toss-text-strong tracking-tight">챗</h1>
   </header>
 
-  <div class="flex-1 overflow-y-auto px-4 pb-3 space-y-2.5">
+  <div bind:this={scrollEl} class="flex-1 overflow-y-auto px-4 pb-3 space-y-2.5">
     {#each $messages as m}
       <div class={m.role === 'user' ? 'flex justify-end' : 'flex justify-start'}>
         <div
