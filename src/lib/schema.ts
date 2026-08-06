@@ -18,4 +18,14 @@ export const SCHEMA = [
      created_at INTEGER NOT NULL,
      updated_at INTEGER NOT NULL
    );`,
+  `CREATE TABLE IF NOT EXISTS usage_log (
+     id               INTEGER PRIMARY KEY AUTOINCREMENT,
+     at               INTEGER NOT NULL,
+     model            TEXT    NOT NULL,
+     input_tokens     INTEGER NOT NULL DEFAULT 0,
+     output_tokens    INTEGER NOT NULL DEFAULT 0,
+     cached_tokens    INTEGER NOT NULL DEFAULT 0,
+     reasoning_tokens INTEGER NOT NULL DEFAULT 0,
+     api_calls        INTEGER NOT NULL DEFAULT 1
+   );`,
 ];

@@ -41,10 +41,44 @@ export interface ToolCall {
   args: any;
 }
 
+export interface TokenUsage {
+  inputTokens: number;
+  outputTokens: number;
+  cachedTokens: number;     // 캐시 히트분 (있으면)
+  reasoningTokens: number;  // 추론 토큰 (있으면)
+}
+
 export interface ResponsesResult {
   text: string;
   toolCalls: ToolCall[];
   raw: any;
+  usage?: TokenUsage;
+  model?: string;
+}
+
+// usage 필드명이 API 스타일마다 달라서(Responses vs Chat Completions) 방어적으로 정규화한다.
+// 둘 다 없으면 undefined — 측정이 목적이므로 0 을 지어내지 않는다.
+export function normalizeUsage(raw: any): TokenUsage | undefined {
+  if (!raw || typeof raw !== 'object') return undefined;
+  // Responses API: input_tokens / output_tokens
+  if (typeof raw.input_tokens === 'number' || typeof raw.output_tokens === 'number') {
+    return {
+      inputTokens: raw.input_tokens ?? 0,
+      outputTokens: raw.output_tokens ?? 0,
+      cachedTokens: raw.input_tokens_details?.cached_tokens ?? 0,
+      reasoningTokens: raw.output_tokens_details?.reasoning_tokens ?? 0,
+    };
+  }
+  // Chat Completions: prompt_tokens / completion_tokens
+  if (typeof raw.prompt_tokens === 'number' || typeof raw.completion_tokens === 'number') {
+    return {
+      inputTokens: raw.prompt_tokens ?? 0,
+      outputTokens: raw.completion_tokens ?? 0,
+      cachedTokens: raw.prompt_tokens_details?.cached_tokens ?? 0,
+      reasoningTokens: raw.completion_tokens_details?.reasoning_tokens ?? 0,
+    };
+  }
+  return undefined;
 }
 
 const DEFAULT_MODEL = 'gpt-4o';
@@ -110,10 +144,10 @@ export function createOpenAIClient(deps: OpenAIDeps) {
         // stream=true 응답은 text/event-stream. CapacitorHttp 는 스트리밍이 아니라
         // 완료된 전체 본문을 텍스트로 준다.
         const text = await r.text();
-        return parseResponsesStream(text);
+        return { ...parseResponsesStream(text), model };
       }
       const data = await r.json();
-      return parseChatResult(data);
+      return { ...parseChatResult(data), model };
     },
   };
 }
@@ -152,7 +186,7 @@ function parseChatResult(data: any): ResponsesResult {
       }
       return { id: tc.id, name: tc.function.name, args };
     });
-  return { text, toolCalls, raw: data };
+  return { text, toolCalls, raw: data, usage: normalizeUsage(data.usage) };
 }
 
 // ─── Responses API ─────────────────────────────────────────────────────────
@@ -259,6 +293,13 @@ function parseResponsesStream(sse: string): ResponsesResult {
     if (raw === '[DONE]') continue;
     try { events.push({ event: ev, data: JSON.parse(raw) }); } catch { /* ignore */ }
   }
+  // usage 는 output 소스(done 이벤트 vs completed.output)와 무관하게 항상
+  // response.completed 에만 실려온다. 먼저 따로 뽑아둔다.
+  const completed = [...events].reverse().find(e =>
+    e.event === 'response.completed' || e.data?.type === 'response.completed'
+  );
+  const usage = completed ? normalizeUsage(completed.data?.response?.usage) : undefined;
+
   // 우선: response.output_item.done 이벤트들이 완성된 항목을 하나씩 실어 보낸다.
   // Codex backend 는 response.completed 의 output 을 빈 배열([])로 보내므로
   // completed 만 보면 항상 빈 응답이 된다. done 이벤트가 유일한 신뢰 소스다.
@@ -266,13 +307,12 @@ function parseResponsesStream(sse: string): ResponsesResult {
     .filter(e => (e.event ?? e.data?.type) === 'response.output_item.done')
     .map(e => e.data?.item)
     .filter(Boolean);
-  if (doneItems.length > 0) return parseResponsesResult({ output: doneItems });
+  if (doneItems.length > 0) return { ...parseResponsesResult({ output: doneItems }), usage };
 
   // 표준 Responses API(및 테스트 픽스처)는 completed 에 output 을 채워 보낸다.
-  const completed = [...events].reverse().find(e =>
-    e.event === 'response.completed' || e.data?.type === 'response.completed'
-  );
-  if (completed?.data?.response?.output?.length) return parseResponsesResult(completed.data.response);
+  if (completed?.data?.response?.output?.length) {
+    return { ...parseResponsesResult(completed.data.response), usage };
+  }
   // 폴백: delta 누적
   const textParts: string[] = [];
   const callsById = new Map<string, { call_id: string; name: string; args: string }>();
@@ -294,7 +334,7 @@ function parseResponsesStream(sse: string): ResponsesResult {
     try { a = c.args ? JSON.parse(c.args) : {}; } catch { /* */ }
     toolCalls.push({ id: c.call_id, name: c.name, args: a });
   }
-  return { text: textParts.join(''), toolCalls, raw: { events } };
+  return { text: textParts.join(''), toolCalls, raw: { events }, usage };
 }
 
 function parseResponsesResult(data: any): ResponsesResult {
@@ -324,7 +364,7 @@ function parseResponsesResult(data: any): ResponsesResult {
   if (textParts.length === 0 && typeof data.output_text === 'string') {
     textParts.push(data.output_text);
   }
-  return { text: textParts.join(''), toolCalls, raw: data };
+  return { text: textParts.join(''), toolCalls, raw: data, usage: normalizeUsage(data.usage) };
 }
 
 export type OpenAIClient = ReturnType<typeof createOpenAIClient>;

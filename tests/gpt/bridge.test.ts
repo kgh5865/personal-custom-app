@@ -146,4 +146,32 @@ describe('gpt bridge', () => {
     const firstCall = (deps.openai.respond as any).mock.calls[0][0];
     expect(firstCall.tools).toEqual(deps.tools);
   });
+
+  it('sums usage across a tool-call round trip and counts apiCalls', async () => {
+    const deps = makeDeps([
+      {
+        text: '', toolCalls: [{ id: 'c1', name: 'create_domain', args: {} }], raw: {},
+        usage: { inputTokens: 100, outputTokens: 20, cachedTokens: 10, reasoningTokens: 0 },
+        model: 'gpt-5.6-terra',
+      },
+      {
+        text: '완료', toolCalls: [], raw: {},
+        usage: { inputTokens: 150, outputTokens: 30, cachedTokens: 0, reasoningTokens: 5 },
+        model: 'gpt-5.6-terra',
+      },
+    ]);
+    const bridge = createBridge(deps);
+    const r = await bridge.send([], 'go');
+    expect(r.apiCalls).toBe(2);
+    expect(r.usage).toEqual({ inputTokens: 250, outputTokens: 50, cachedTokens: 10, reasoningTokens: 5 });
+    expect(r.model).toBe('gpt-5.6-terra');
+  });
+
+  it('treats missing usage on a response as zero but still counts the call', async () => {
+    const deps = makeDeps([{ text: 'ok', toolCalls: [], raw: {} }]);
+    const bridge = createBridge(deps);
+    const r = await bridge.send([], 'hi');
+    expect(r.apiCalls).toBe(1);
+    expect(r.usage).toEqual({ inputTokens: 0, outputTokens: 0, cachedTokens: 0, reasoningTokens: 0 });
+  });
 });

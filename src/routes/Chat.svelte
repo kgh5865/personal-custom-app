@@ -9,6 +9,7 @@
   import { createDomains } from '../lib/domains';
   import { getFs } from '../lib/fs';
   import { getDb } from '../lib/db';
+  import { recordUsage } from '../lib/usage';
   import { loadProfile, profile, saveProfile } from '../stores/profile';
 
   let input = '';
@@ -94,6 +95,13 @@
       // 재시도 때도 assistant 응답이 안 붙었으니 이 계산은 그대로 성립한다.
       const priorHistory = $messages.slice(0, -1);
       const r = await bridge.send(priorHistory, userMsg);
+
+      // 기록 실패가 채팅을 깨뜨리면 안 되므로 삼키고 콘솔에만 남긴다.
+      try {
+        await recordUsage(db, { model: r.model ?? 'unknown', usage: r.usage, apiCalls: r.apiCalls });
+      } catch (e) {
+        console.error('usage 기록 실패', e);
+      }
 
       await appendMessage({ role: 'assistant', content: r.text || '(빈 응답)' });
       failedMessage = '';

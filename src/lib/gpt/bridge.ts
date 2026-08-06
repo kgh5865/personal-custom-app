@@ -1,4 +1,4 @@
-import type { OpenAIClient } from '../openai';
+import type { OpenAIClient, TokenUsage } from '../openai';
 import type { Registry } from './registry';
 
 export interface ChatMessage {
@@ -23,6 +23,9 @@ export interface ToolEvent {
 export interface BridgeResult {
   text: string;
   toolEvents: ToolEvent[];
+  usage: TokenUsage;
+  apiCalls: number;
+  model?: string;
 }
 
 export function createBridge(deps: BridgeDeps) {
@@ -35,11 +38,20 @@ export function createBridge(deps: BridgeDeps) {
       ];
 
       const toolEvents: ToolEvent[] = [];
+      const usage: TokenUsage = { inputTokens: 0, outputTokens: 0, cachedTokens: 0, reasoningTokens: 0 };
+      let apiCalls = 0;
 
       for (let i = 0; i <= deps.maxToolIterations; i++) {
         const r = await deps.openai.respond({ input, tools: deps.tools });
+        apiCalls++;
+        if (r.usage) {
+          usage.inputTokens += r.usage.inputTokens;
+          usage.outputTokens += r.usage.outputTokens;
+          usage.cachedTokens += r.usage.cachedTokens;
+          usage.reasoningTokens += r.usage.reasoningTokens;
+        }
         if (r.toolCalls.length === 0) {
-          return { text: r.text, toolEvents };
+          return { text: r.text, toolEvents, usage, apiCalls, model: r.model };
         }
         if (i === deps.maxToolIterations) {
           throw new Error(`exceeded max tool iterations (${deps.maxToolIterations})`);

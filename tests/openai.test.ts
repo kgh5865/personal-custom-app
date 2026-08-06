@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { createOpenAIClient, isAuthExpired, type OpenAIDeps } from '../src/lib/openai';
+import { createOpenAIClient, isAuthExpired, normalizeUsage, type OpenAIDeps } from '../src/lib/openai';
 import {
   MODEL_OPTIONS, OAUTH_MODELS, OAUTH_DEFAULT_MODEL, DEFAULT_SETTINGS, resolveModelForAuth,
 } from '../src/lib/ai-settings';
@@ -370,5 +370,89 @@ describe('openai client — Responses API mode', () => {
     await client.respond({ input: [], tools: [] });
     const body = JSON.parse(fetchMock.mock.calls[0][1].body as string);
     expect(body.reasoning_effort).toBe('low');
+  });
+
+  // 실제 Codex backend 는 output_item.done 으로 텍스트를, response.completed 로
+  // usage 를 따로 보낸다. 이 둘이 서로 다른 이벤트에서 와도 결과 하나에 합쳐져야 한다.
+  it('extracts usage from response.completed even when output comes from output_item.done', async () => {
+    const item = { id: 'msg_1', type: 'message', role: 'assistant', status: 'completed',
+      content: [{ type: 'output_text', text: '안녕하세요' }] };
+    const frames = `event: response.output_item.done\ndata: ${JSON.stringify({ type: 'response.output_item.done', output_index: 0, item })}\n\n`;
+    const done = `event: response.completed\ndata: ${JSON.stringify({
+      type: 'response.completed',
+      response: {
+        id: 'resp_1', status: 'completed', output: [],
+        usage: { input_tokens: 120, output_tokens: 30, input_tokens_details: { cached_tokens: 40 }, output_tokens_details: { reasoning_tokens: 10 } },
+      },
+    })}\n\ndata: [DONE]\n\n`;
+    const fetchMock = vi.fn(async () => new Response(frames + done, { status: 200, headers: { 'Content-Type': 'text/event-stream' } }));
+    const client = createOpenAIClient({
+      fetch: fetchMock, getAuthHeader: async () => 'Bearer x', getApiStyle: async () => 'responses',
+    });
+    const r = await client.respond({ input: [], tools: [] });
+    expect(r.text).toBe('안녕하세요');
+    expect(r.usage).toEqual({ inputTokens: 120, outputTokens: 30, cachedTokens: 40, reasoningTokens: 10 });
+  });
+
+  it('leaves usage undefined when response.completed has no usage', async () => {
+    const fetchMock = vi.fn(async () => respResp([
+      { type: 'message', role: 'assistant', content: [{ type: 'output_text', text: 'hi' }] },
+    ]));
+    const client = createOpenAIClient({
+      fetch: fetchMock, getAuthHeader: async () => 'Bearer x', getApiStyle: async () => 'responses',
+    });
+    const r = await client.respond({ input: [], tools: [] });
+    expect(r.usage).toBeUndefined();
+  });
+
+  it('extracts usage from chat completions response', async () => {
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({
+      choices: [{ message: { content: 'hi' } }],
+      usage: { prompt_tokens: 50, completion_tokens: 20, prompt_tokens_details: { cached_tokens: 5 } },
+    }), { status: 200 }));
+    const client = createOpenAIClient(makeDeps(fetchMock));
+    const r = await client.respond({ input: [], tools: [] });
+    expect(r.usage).toEqual({ inputTokens: 50, outputTokens: 20, cachedTokens: 5, reasoningTokens: 0 });
+  });
+
+  it('stamps the resolved model on the result', async () => {
+    const fetchMock = vi.fn(async () => respResp([]));
+    const client = createOpenAIClient({
+      fetch: fetchMock, getAuthHeader: async () => 'Bearer x', getApiStyle: async () => 'responses',
+      getModel: async () => 'gpt-5.6-terra',
+    });
+    const r = await client.respond({ input: [], tools: [] });
+    expect(r.model).toBe('gpt-5.6-terra');
+  });
+});
+
+describe('normalizeUsage', () => {
+  it('normalizes Responses API shape', () => {
+    const u = normalizeUsage({
+      input_tokens: 100, output_tokens: 40,
+      input_tokens_details: { cached_tokens: 25 },
+      output_tokens_details: { reasoning_tokens: 12 },
+    });
+    expect(u).toEqual({ inputTokens: 100, outputTokens: 40, cachedTokens: 25, reasoningTokens: 12 });
+  });
+
+  it('normalizes Chat Completions shape', () => {
+    const u = normalizeUsage({
+      prompt_tokens: 80, completion_tokens: 33,
+      prompt_tokens_details: { cached_tokens: 10 },
+      completion_tokens_details: { reasoning_tokens: 5 },
+    });
+    expect(u).toEqual({ inputTokens: 80, outputTokens: 33, cachedTokens: 10, reasoningTokens: 5 });
+  });
+
+  it('returns undefined when usage is missing entirely', () => {
+    expect(normalizeUsage(undefined)).toBeUndefined();
+    expect(normalizeUsage(null)).toBeUndefined();
+    expect(normalizeUsage({})).toBeUndefined();
+  });
+
+  it('fills missing sub-fields with 0 when partial usage is present', () => {
+    expect(normalizeUsage({ input_tokens: 10 })).toEqual({ inputTokens: 10, outputTokens: 0, cachedTokens: 0, reasoningTokens: 0 });
+    expect(normalizeUsage({ prompt_tokens: 10 })).toEqual({ inputTokens: 10, outputTokens: 0, cachedTokens: 0, reasoningTokens: 0 });
   });
 });

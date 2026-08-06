@@ -17,6 +17,7 @@
   import { getFs } from '../lib/fs';
   import { getDb } from '../lib/db';
   import { createDomains, type TrashEntry } from '../lib/domains';
+  import { getUsageSummary, clearUsage, type UsageSummary } from '../lib/usage';
   import { refreshDomains } from '../stores/domains';
 
   type Provider = 'chatgpt' | 'apikey' | 'openclaw';
@@ -152,10 +153,36 @@
     return new Date(ts).toLocaleString('ko-KR');
   }
 
+  // ─── 토큰 사용량 ─────────────────────────────────────────────
+  let usage: UsageSummary | null = null;
+  let usageBusy = false;
+
+  async function refreshUsage() {
+    const db = await getDb();
+    usage = await getUsageSummary(db);
+  }
+
+  async function resetUsage() {
+    if (!confirm('토큰 사용량 기록을 초기화할까요? 되돌릴 수 없습니다.')) return;
+    usageBusy = true;
+    try {
+      const db = await getDb();
+      await clearUsage(db);
+      await refreshUsage();
+    } finally {
+      usageBusy = false;
+    }
+  }
+
+  function fmtNum(n: number): string {
+    return n.toLocaleString('ko-KR');
+  }
+
   onMount(() => {
     refresh();
     refreshAi();
     refreshTrash();
+    refreshUsage();
     // 앱 실행 시 조용히 업데이트 확인 (에러는 삼킴)
     if (isAndroid) runUpdateCheck(true);
   });
@@ -639,4 +666,54 @@
       </div>
     {/if}
   </section>
+
+  <!-- ─── 토큰 사용량 ────────────────────────────────────────────────────── -->
+  {#if usage}
+    {@const buckets = [
+      { label: '오늘', b: usage.today },
+      { label: '최근 7일', b: usage.last7d },
+      { label: '전체', b: usage.allTime },
+    ]}
+    <section class="bg-toss-surface rounded-toss-card p-5 space-y-4">
+      <div class="flex items-center gap-3">
+        <div class="w-10 h-10 rounded-toss-chip bg-toss-blue-light flex items-center justify-center">
+          <span class="msym text-toss-blue" style="font-size: 22px;">insights</span>
+        </div>
+        <div class="flex-1 min-w-0">
+          <h2 class="font-bold text-[16px] text-toss-text-strong tracking-tight">토큰 사용량</h2>
+          <p class="text-[13px] text-toss-text-weak font-medium truncate mt-0.5">
+            전체 API 호출 {fmtNum(usage.allTime.apiCalls)}회
+          </p>
+        </div>
+        <button
+          on:click={resetUsage}
+          disabled={usageBusy}
+          class="md-ripple bg-toss-bg-soft text-toss-error rounded-toss-btn h-9 px-3 font-bold text-[12px] disabled:opacity-50"
+        >
+          기록 초기화
+        </button>
+      </div>
+
+      <div class="space-y-2">
+        {#each buckets as row}
+          <div class="bg-toss-bg-soft rounded-toss-btn p-3 space-y-1">
+            <div class="flex items-center justify-between">
+              <span class="font-bold text-[13px] text-toss-text-strong">{row.label}</span>
+              <span class="text-[11px] text-toss-text-weak font-medium">호출 {fmtNum(row.b.apiCalls)}회</span>
+            </div>
+            <div class="text-[13px] text-toss-text font-semibold">
+              입력 {fmtNum(row.b.inputTokens)} · 출력 {fmtNum(row.b.outputTokens)}
+            </div>
+            {#if row.b.cachedTokens > 0 || row.b.reasoningTokens > 0}
+              <div class="text-[11px] text-toss-text-weak font-medium">
+                {#if row.b.cachedTokens > 0}캐시 {fmtNum(row.b.cachedTokens)}{/if}
+                {#if row.b.cachedTokens > 0 && row.b.reasoningTokens > 0} · {/if}
+                {#if row.b.reasoningTokens > 0}추론 {fmtNum(row.b.reasoningTokens)}{/if}
+              </div>
+            {/if}
+          </div>
+        {/each}
+      </div>
+    </section>
+  {/if}
 </div>
