@@ -28,4 +28,10 @@ export const SCHEMA = [
      reasoning_tokens INTEGER NOT NULL DEFAULT 0,
      api_calls        INTEGER NOT NULL DEFAULT 1
    );`,
+  `CREATE TABLE IF NOT EXISTS chat_summary (
+     id              INTEGER PRIMARY KEY AUTOINCREMENT,
+     upto_message_id INTEGER NOT NULL,
+     content         TEXT    NOT NULL,
+     created_at      INTEGER NOT NULL
+   );`,
 ];

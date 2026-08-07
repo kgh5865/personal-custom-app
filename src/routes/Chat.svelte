@@ -1,8 +1,9 @@
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte';
   import { link } from 'svelte-spa-router';
-  import { messages, loadHistory, appendMessage } from '../stores/chat';
+  import { messages, loadHistory, appendMessage, summary, compactHistory } from '../stores/chat';
   import { getOpenAIClient, isAuthExpired } from '../lib/openai';
+  import { needsCompaction, createRecordingSummarizer } from '../lib/compact';
   import { createBridge } from '../lib/gpt/bridge';
   import { createRegistry } from '../lib/gpt/registry';
   import { TOOL_SCHEMAS } from '../lib/gpt/tools';
@@ -72,6 +73,16 @@
 
     try {
       const openai = await getOpenAIClient();
+
+      // 압축 실패가 채팅을 깨뜨리면 안 되므로 삼키고 콘솔에만 남긴다. 압축 없이 그대로 진행.
+      if (needsCompaction($messages)) {
+        try {
+          await compactHistory(await createRecordingSummarizer(openai));
+        } catch (e) {
+          console.error('대화 압축 실패', e);
+        }
+      }
+
       const fs = await getFs();
       const db = await getDb();
       const domains = createDomains(fs, db);
@@ -90,6 +101,7 @@
           '도메인은 한 사용자의 생활 영역(예: 메모, 정책, 청약)을 의미합니다. ' +
           '한국어로 자연스럽게 응답하세요.',
         maxToolIterations: 5,
+        summary: $summary?.content,
       });
       // 마지막 항목은 방금(또는 실패했던) 사용자 메시지이므로 제외한다.
       // 재시도 때도 assistant 응답이 안 붙었으니 이 계산은 그대로 성립한다.
@@ -136,6 +148,16 @@
   </header>
 
   <div bind:this={scrollEl} class="flex-1 overflow-y-auto px-4 pb-3 space-y-2.5">
+    {#if $summary}
+      <details class="bg-toss-bg-soft rounded-toss-btn px-4 py-2.5">
+        <summary class="text-[12px] text-toss-text-weak font-bold cursor-pointer">
+          이전 대화 요약됨 (펼쳐서 보기)
+        </summary>
+        <p class="text-[12px] text-toss-text font-medium whitespace-pre-wrap mt-2 leading-relaxed">
+          {$summary.content}
+        </p>
+      </details>
+    {/if}
     {#each $messages as m}
       <div class={m.role === 'user' ? 'flex justify-end' : 'flex justify-start'}>
         <div

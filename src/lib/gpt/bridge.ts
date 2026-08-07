@@ -4,6 +4,7 @@ import type { Registry } from './registry';
 export interface ChatMessage {
   role: 'user' | 'assistant' | 'system';
   content: string;
+  id?: number;
 }
 
 export interface BridgeDeps {
@@ -12,6 +13,8 @@ export interface BridgeDeps {
   tools: any[];
   systemPrompt: string;
   maxToolIterations: number;
+  // 이전 대화의 압축 요약. 있으면 시스템 프롬프트와 별도의 system 메시지로 붙는다.
+  summary?: string;
 }
 
 export interface ToolEvent {
@@ -33,6 +36,7 @@ export function createBridge(deps: BridgeDeps) {
     async send(history: ChatMessage[], userMessage: string): Promise<BridgeResult> {
       const input: any[] = [
         { role: 'system', content: deps.systemPrompt },
+        ...(deps.summary ? [{ role: 'system', content: `지금까지의 대화 요약:\n${deps.summary}` }] : []),
         ...history.map(m => ({ role: m.role, content: m.content })),
         { role: 'user', content: userMessage },
       ];

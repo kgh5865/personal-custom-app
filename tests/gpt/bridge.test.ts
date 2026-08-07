@@ -53,6 +53,25 @@ describe('gpt bridge', () => {
     expect(firstCall.input[firstCall.input.length - 1]).toEqual({ role: 'user', content: 'hi' });
   });
 
+  it('injects the summary as a separate system message when provided', async () => {
+    const deps = makeDeps([{ text: 'ok', toolCalls: [], raw: {} }]);
+    deps.summary = '요약 내용';
+    const bridge = createBridge(deps);
+    await bridge.send([], 'hi');
+    const firstCall = (deps.openai.respond as any).mock.calls[0][0];
+    expect(firstCall.input[0]).toEqual({ role: 'system', content: 'You help the user.' });
+    expect(firstCall.input[1]).toEqual({ role: 'system', content: '지금까지의 대화 요약:\n요약 내용' });
+    expect(firstCall.input[firstCall.input.length - 1]).toEqual({ role: 'user', content: 'hi' });
+  });
+
+  it('does not inject a summary message when none is provided', async () => {
+    const deps = makeDeps([{ text: 'ok', toolCalls: [], raw: {} }]);
+    const bridge = createBridge(deps);
+    await bridge.send([], 'hi');
+    const firstCall = (deps.openai.respond as any).mock.calls[0][0];
+    expect(firstCall.input.some((m: any) => typeof m.content === 'string' && m.content.includes('요약'))).toBe(false);
+  });
+
   it('includes prior chat history in input', async () => {
     const deps = makeDeps([{ text: 'ok', toolCalls: [], raw: {} }]);
     const bridge = createBridge(deps);

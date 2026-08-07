@@ -19,6 +19,9 @@
   import { createDomains, type TrashEntry } from '../lib/domains';
   import { getUsageSummary, clearUsage, type UsageSummary } from '../lib/usage';
   import { refreshDomains } from '../stores/domains';
+  import { messages, summary, compactHistory, loadHistory } from '../stores/chat';
+  import { estimateHistoryTokens, createRecordingSummarizer } from '../lib/compact';
+  import { getOpenAIClient } from '../lib/openai';
 
   type Provider = 'chatgpt' | 'apikey' | 'openclaw';
 
@@ -178,11 +181,32 @@
     return n.toLocaleString('ko-KR');
   }
 
+  // ─── 대화 압축 ───────────────────────────────────────────────
+  let compactBusy = false;
+  let compactError = '';
+  let compactResult = '';
+
+  async function compactNow() {
+    compactBusy = true;
+    compactError = '';
+    compactResult = '';
+    try {
+      const openai = await getOpenAIClient();
+      const r = await compactHistory(await createRecordingSummarizer(openai));
+      compactResult = r ? `${r.foldedCount}개 메시지를 요약으로 접었습니다.` : '접을 만한 오래된 메시지가 없습니다.';
+    } catch (e: any) {
+      compactError = e?.message ?? String(e);
+    } finally {
+      compactBusy = false;
+    }
+  }
+
   onMount(() => {
     refresh();
     refreshAi();
     refreshTrash();
     refreshUsage();
+    loadHistory();
     // 앱 실행 시 조용히 업데이트 확인 (에러는 삼킴)
     if (isAndroid) runUpdateCheck(true);
   });
@@ -716,4 +740,34 @@
       </div>
     </section>
   {/if}
+
+  <!-- ─── 대화 ───────────────────────────────────────────────────────── -->
+  <section class="bg-toss-surface rounded-toss-card p-5 space-y-4">
+    <div class="flex items-center gap-3">
+      <div class="w-10 h-10 rounded-toss-chip bg-toss-blue-light flex items-center justify-center">
+        <span class="msym text-toss-blue" style="font-size: 22px;">forum</span>
+      </div>
+      <div class="flex-1 min-w-0">
+        <h2 class="font-bold text-[16px] text-toss-text-strong tracking-tight">대화</h2>
+        <p class="text-[13px] text-toss-text-weak font-medium truncate mt-0.5">
+          메시지 {fmtNum($messages.length)}개 · 추정 {fmtNum(estimateHistoryTokens($messages))} 토큰
+          {#if $summary} · 요약 있음{/if}
+        </p>
+      </div>
+      <button
+        on:click={compactNow}
+        disabled={compactBusy}
+        class="md-ripple bg-toss-bg-soft text-toss-blue rounded-toss-btn h-9 px-3 font-bold text-[12px] disabled:opacity-50"
+      >
+        {compactBusy ? '압축 중...' : '지금 압축하기'}
+      </button>
+    </div>
+
+    {#if compactResult}
+      <p class="text-[12px] text-toss-text-weak font-medium">{compactResult}</p>
+    {/if}
+    {#if compactError}
+      <div class="text-toss-error text-[13px] font-medium">{compactError}</div>
+    {/if}
+  </section>
 </div>
